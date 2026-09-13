@@ -461,7 +461,7 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 - [Alchyr](https://github.com/Alchyr) 的 [BaseLib](https://github.com/Alchyr/BaseLib-StS2) 与 [ModTemplate-StS2](https://github.com/Alchyr/ModTemplate-StS2)
 - [Harmony](https://github.com/pardeike/Harmony)
 - [GlitchedReme](https://github.com/GlitchedReme) 的 [中文 STS2 modding 教程](https://github.com/GlitchedReme/SlayTheSpire2ModdingTutorials)
-- 创意工坊模组 **Boss Gauntlet**（v0.1.3）的作者 —— 由于技术不成熟，双 BOSS 的实现与火堆添加**参考了他的模组**，采用类似的方法实现了功能。如果作者对此感到不满，请立刻联系 [@Coll-ed](https://github.com/Coll-ed)，我会**立刻将其删除**并采用节点注入的方式来替换功能。
+- 创意工坊模组 **Boss Gauntlet**（v0.1.3）的作者 —— 本模组"双 BOSS 之间的合成火堆 / 商店"这一功能，早期因技术尚不成熟，**参考了他的实现思路与做法**（双 BOSS 的实现与火堆添加均受益于此）。如果原作者认为不妥，请随时联系 [@Coll-ed](https://github.com/Coll-ed)：我会**立即移除相关实现**，并改用自行重新设计的节点注入方案来补齐功能。
 
 **兼容性互操作（本分支新增的致谢）**
 

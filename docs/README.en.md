@@ -508,7 +508,7 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
   [ModTemplate-StS2](https://github.com/Alchyr/ModTemplate-StS2)
 - [Harmony](https://github.com/pardeike/Harmony)
 - [GlitchedReme](https://github.com/GlitchedReme) for the Chinese StS2 modding tutorials
-- The author of the workshop mod **Boss Gauntlet** (v0.1.3) — as our technique was not mature enough, the double-boss implementation and the hearth insertion were **modelled on their mod**, implementing the feature in a similar way. If the author is unhappy about this, please contact [@Coll-ed](https://github.com/Coll-ed) immediately: it will be **removed right away** and the feature rebuilt via node injection.
+- The author of the workshop mod **Boss Gauntlet** (v0.1.3) — the "synthetic hearth / shop between the two bosses" feature was, at a stage when our own technique was not yet mature, **modelled on their implementation** (both the double-boss setup and the hearth insertion benefited from it). If the original author objects, please contact [@Coll-ed](https://github.com/Coll-ed) and the relevant implementation will be **removed immediately**, with the feature rebuilt using our own node-injection design.
 
 **Interoperability (new in this branch)**
 

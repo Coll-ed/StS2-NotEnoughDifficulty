@@ -9,11 +9,11 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
 /// ## 参考实现声明
-/// 由于技术不成熟，双 BOSS 的实现与火堆添加**参考了他的模组（创意工坊 Boss Gauntlet v0.1.3）**，
-/// 采用类似的方法实现了功能。
+/// 本模组"双 BOSS 之间的合成火堆 / 商店"这一功能，早期因技术尚不成熟，**参考了创意工坊模组
+/// Boss Gauntlet（v0.1.3）的实现思路与做法**（双 BOSS 的实现与火堆添加均受益于此）。
 ///
-/// 如果作者对此感到不满，请立刻联系 @Coll-ed（https://github.com/Coll-ed），
-/// 我会立刻将其删除并采用节点注入的方式来替换功能。
+/// 如果原作者认为不妥，请联系 @Coll-ed（https://github.com/Coll-ed）：
+/// 我会立即移除相关实现，并改用自行重新设计的节点注入方案来补齐功能。
 
 namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 
