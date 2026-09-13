@@ -1,4 +1,4 @@
-{
+﻿{
   "NOTENOUGHDIFFICULTY.mod_title": "还不够难",
   "NOTENOUGHDIFFICULTY-ENABLED.title": "启用本模组",
   "NOTENOUGHDIFFICULTY-ENABLED.description": "总开关。关闭后所有玩法修改停止生效（自定义的 4/5 层仍会出现在地图上，但不再改难度与地图结构）。",
@@ -66,10 +66,6 @@
   "NOTENOUGHDIFFICULTY-ACT4_BOSS_WEIGHT_ACT2.description": "第 4 层顶端 Boss 在该层 Boss 池里随机抽取，这里调整各层 Boss 的占比。会自动避开前 3 层已经出现过的 Boss。",
   "NOTENOUGHDIFFICULTY-ACT4_BOSS_WEIGHT_ACT3.title": "第 3 层 Boss 占比",
   "NOTENOUGHDIFFICULTY-ACT4_BOSS_WEIGHT_ACT3.description": "第 4 层顶端 Boss 在该层 Boss 池里随机抽取，这里调整各层 Boss 的占比。会自动避开前 3 层已经出现过的 Boss。",
-
-  "NOTENOUGHDIFFICULTY-BEHAVIOR_TOGGLES.title": "行为开关",
-  "NOTENOUGHDIFFICULTY-AVOID_ADJACENT_ENCOUNTER_DUPLICATE.title": "避免连续相同遭遇",
-  "NOTENOUGHDIFFICULTY-AVOID_ADJACENT_ENCOUNTER_DUPLICATE.description": "默认开启。重新排列第 4 层的精英顺序，尽量避免连续两场打同一组怪（池子太小时无法完全避免）。",
 
   "NOTENOUGHDIFFICULTY-SPEED.title": "速度",
   "NOTENOUGHDIFFICULTY-ENABLE_EXTRA_SPEED.title": "启用额外加速",

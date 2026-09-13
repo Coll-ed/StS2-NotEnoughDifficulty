@@ -5,7 +5,13 @@ English | [中文](../README.md)
 > ### Branch identity
 > - **Upstream (original design & implementation, copyright held by the original author)**:
 >   <https://github.com/bwnotfound/StS2-NotEnoughDifficulty>
-> - **This branch**: `beta-0.111-port` — a port + expansion branch **commissioned by the original author**
+> - **Tooling & collaboration**
+
+- **DeepSeek** (DeepSeek Harness / deepseek-flash) — the **AI collaborator** on this port: reading and
+  refactoring the code, turning IL disassembly into reusable conclusions, tracking down the in-game issues
+  (background ownership, roster drift, rest-site ordering, the self-recursion crash, …), and writing the
+  repository documentation (this README, the 37-pitfall guide, the handover notes).
+**This branch**: `beta-0.111-port` — a port + expansion branch **commissioned by the original author**
 > - **Target environment**: StS2 **Public Beta v0.111.0** (MegaDot / Godot 4.5.1) + **BaseLib 3.4.7**
 > - **Ported by**: [@Coll-ed](https://github.com/Coll-ed); uses the upstream `LICENSE`
 
@@ -28,6 +34,34 @@ broadcast to every player.
 
 ---
 
+## 🔗 Compatibility: why it is a first-class requirement here
+
+In a modded setup the fragile part of an "extra acts" mod is not the gameplay — it is **fighting other
+mods over the same ground**. This branch treats compatibility as a hard requirement:
+
+| The "quick" way | What breaks | What this branch does | Player-visible effect |
+|---|---|---|---|
+| Detect the layer by **act type** (`is Hive => 2`) | Act variants from other mods are not recognised ⇒ that act's double boss / scaling **silently does nothing** | Layer index is **derived from data** (`ModelDb.ActsByIndex` / `RunState.Acts` / `act.Index`) | This mod keeps working inside a whole-act modpack |
+| Two mods both claim **act 4** | Last loaded wins, or a black screen | If act 4 is taken, this mod's acts **shift to acts 5 and 6** | Coexists with mods such as Act 4 Heart |
+| Roster computed from "what is left" | It **changes as you fight**: nodes no longer match rooms, and in the worst case "one boss ends the run" | Roster is computed from the record **before entering the act**; "is this a boss room / may it end the act" is decided by **coordinate** | Stable for the whole act, consistent across save/load |
+| Build a fresh background asset and force it | Overwrites another mod's hand-drawn arena | **Rewrite `parentAct`** so the other mod's own hooks run | Their carefully made scene still shows |
+| Fight over map nodes / links / travelability | Chained conflicts with other map mods | Replace only our own nodes; chaining and travelability stay with vanilla `RecalculateTravelability` | Coexists with other map-editing mods |
+| One failing patch takes everything down | A single incompatibility kills the mod | Every patch class has its own try/catch; failures only print `Patch class X failed (skipped)` | The game still starts in extreme setups |
+| No idea what else is loaded | Debugging becomes guesswork | `ModCompat` runtime detection, yielding, and a startup **compatibility report** | You can see at a glance which mods sit on the same patch points |
+
+**The heavy mods this was actually validated against:**
+
+| Mod | Size / nature | What it stresses |
+|---|---|---|
+| **ActsFromThePast** (+ its dependency **RitsuLib**) | Brings all three *Slay the Spire 1* acts in: its own elites / bosses and **hand-drawn combat backgrounds**, with a >100 MB asset pack | Its acts, elites and bosses feed this mod's act 4/5 draws; its hand-drawn backgrounds are exactly why we ended up **rewriting `parentAct`** instead of building our own assets |
+| **YUI Spire Expansion** / **YUI Card Expansion** | Large content expansions (cards, relics, events, bosses) | Many new bosses enter the act-5 plan and new elites enter the act-4 roster; coexists with its own config pages |
+| **Act 4 Heart** | Directly **occupies act 4** | Exercises the "shift to acts 5 and 6" path (`Act4HeartAutoShift`) |
+| Skin / card-art / localization packs (e.g. Orca skin, Ironclad card art) | Tens of MB of asset replacements | Confirms localization and official-settings injection are not disturbed by asset mods |
+
+> Only mod **names** are listed for compatibility validation; none of their assets are included or redistributed.
+In one line: **the goal is not "works on my save", it is "does not make a mess inside someone else's modpack".**
+
+---
 ## ✨ Core features
 
 ### 1. Act 4 · Elite gauntlet (rebuilt)
@@ -83,7 +117,7 @@ Implementation notes:
   save/load is consistent.
 - **Synthetic nodes**: a synthetic rest site (`InterBossHearth`, on by default) or shop (`InterBossShop`, off
   by default) can be inserted between the two bosses. The technique is "virtual coordinate + vanilla node
-  factory + remove direct link + re-chain + redraw paths + recompute travelability", copied from the workshop
+  factory + remove direct link + re-chain + redraw paths + recompute travelability", inspired by the workshop
   mod *Boss Gauntlet* (see the teardown notes below).
 - **Ascension 10 fix**: N10's double boss is pinned back to **act 3**, so it cannot drift to the end of the
   act list after this mod extends the run.
@@ -277,7 +311,8 @@ whether the map was recoloured as intended.
 | Difficulty presets | Removed; only the X/Y factors and per-act switches remain |
 | Desync diagnostic patch | Removed (`DesyncDiagnosticPatch`) |
 | Act-5 early implementation | **Replaced** by this branch's `Act5/*` (custom node + straight-line map + two modes) |
-| `AvoidAdjacentEncounterDuplicate` / `EncounterDeduplicator` | Legacy leftovers (the new "fixed roster + coordinate placement" cannot repeat anyway); to be cleaned up next |
+| Early "map edge mist" overlay | Deleted (disabled on request, then removed: `Act5/ActMapOverlay.cs`) |
+| `AvoidAdjacentEncounterDuplicate` / `EncounterDeduplicator` | Deleted (the new "fixed roster + coordinate placement" cannot repeat anyway) |
 
 ---
 
@@ -366,7 +401,7 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
   [ModTemplate-StS2](https://github.com/Alchyr/ModTemplate-StS2)
 - [Harmony](https://github.com/pardeike/Harmony)
 - [GlitchedReme](https://github.com/GlitchedReme) for the Chinese StS2 modding tutorials
-- The author of the workshop mod **Boss Gauntlet** — the synthetic map-node technique comes from it
+- The author of the workshop mod **Boss Gauntlet** — the inspiration for the synthetic map-node technique
 
 **Interoperability (new in this branch)**
 
@@ -378,6 +413,12 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 - **Skin / card-art / localization mods** — used to validate that localization and settings injection do not
   clash
 
+**Tooling & collaboration**
+
+- **DeepSeek** (DeepSeek Harness / deepseek-flash) — the **AI collaborator** on this port: reading and
+  refactoring the code, turning IL disassembly into reusable conclusions, tracking down the in-game issues
+  (background ownership, roster drift, rest-site ordering, the self-recursion crash, …), and writing the
+  repository documentation (this README, the 37-pitfall guide, the handover notes).
 **This branch**
 
 - [@Coll-ed](https://github.com/Coll-ed) — the beta v0.111.0 port, the act 4/5 rebuilds, the multi-mod

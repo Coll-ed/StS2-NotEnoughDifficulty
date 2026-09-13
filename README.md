@@ -4,7 +4,12 @@
 
 > ### 分支身份
 > - **上游（原始设计与实现，著作权归原作者）**：<https://github.com/bwnotfound/StS2-NotEnoughDifficulty>
-> - **本分支**：`beta-0.111-port` —— **受原作者委托**进行的移植 + 扩展分支
+> - **工具与协作**
+
+- **DeepSeek**（DeepSeek Harness / deepseek-flash）—— 本移植的 **AI 协作方**：代码通读与重构、
+  把 IL 反汇编结论整理成可复用方法、实机问题排查（背景归属 / 名单漂移 / 火堆时序 / 自递归崩溃等），
+  以及仓库文档（README、37 条踩坑指南、待办与交接）的撰写与整理。
+**本分支**：`beta-0.111-port` —— **受原作者委托**进行的移植 + 扩展分支
 > - **适配环境**：StS2 **Public Beta v0.111.0**（MegaDot / Godot 4.5.1）+ **BaseLib 3.4.7**
 > - **移植**：[@Coll-ed](https://github.com/Coll-ed)；沿用上游 `LICENSE`
 
@@ -26,6 +31,34 @@
 
 ---
 
+## 🔗 兼容性：为什么把它当成第一等需求（本分支的侧重点）
+
+多模组环境下，一个"加幕"的 mod 最容易坏的不是玩法，而是**和别人的东西抢同一块地**。
+本分支把兼容性当成硬指标，带来的直接影响：
+
+| 如果按"顺手写法"做 | 后果 | 本分支的做法 | 玩家端的影响 |
+|---|---|---|---|
+| 按 act **类型**判层号（`is Hive => 2` 这种表） | 别人的 act 变体认不出来 ⇒ 该层双 boss / 难度强化**静默失效**（没报错、也没效果） | 层号按 `ModelDb.ActsByIndex` / `RunState.Acts` / `act.Index` **数据判定** | 整合包里装了整幕模组，本 mod 的功能照常生效 |
+| 两个 mod 都想占**第 4 幕** | 谁加载晚谁覆盖，甚至黑屏 | 检测到第 4 幕被占 ⇒ 本模组两个幕**自动顺延为第 5、6 幕** | 可以和 ACT 4 心脏这类模组同时装 |
+| 名单按"还剩谁没打"算 | **边打边变**：节点与房间对不上，严重时"打一个 BOSS 直接进结局" | 名单按"**进入本幕之前**"的战绩算；"算不算 BOSS 房/能不能收尾"一律用**坐标**判 | 一幕之内行为恒定，读档一致 |
+| 自己 new 一份背景资产去顶 | 覆盖掉别人自绘的竞技场 | **改写 `parentAct`**，让对方自己的钩子照常跑 | 别的模组精心画的场景能正确显示 |
+| 抢着改地图节点 / 连线 / 可通行性 | 与别的改地图模组互相打架 | 只替换自己的节点，连锁与可通行性交回原版 `RecalculateTravelability` | 与"也改地图"的模组共存 |
+| patch 一处失败就整体崩 | 一个不兼容点废掉整个 mod | 每个 patch 类独立 try/catch，失败只打 `Patch class X failed (skipped)` | 极端组合下仍能进游戏 |
+| 启动时不知道装了谁 | 出问题只能靠猜 | `ModCompat` 运行时检测 + 放权 + 启动**兼容性报告** | 排障时一眼看到"关键 patch 点上还有哪些 mod" |
+
+**实际用来验证的"体量大"的模组**（本分支的兼容性不是纸上谈兵）：
+
+| 模组 | 体量 / 性质 | 它对本 mod 的考验 |
+|---|---|---|
+| **ActsFromThePast**（+ 前置库 **RitsuLib**） | 把《杀戮尖塔 1》的三幕整体搬进来：自带精英 / BOSS / **自绘战斗背景**，资源包上百 MB | 它的 act / 精英 / BOSS 会进本 mod 第 4、5 幕的抽取；它的自绘背景逼出了"**改写 `parentAct`** 而非自己造背景"的做法 |
+| **YUI Spire Expansion** / **YUI Card Expansion** | 大型内容扩展（新卡、遗物、事件、BOSS） | 大量新 BOSS 进第 5 幕编排、新精英进第 4 幕名单；与它的配置页/设置项共存 |
+| **Act 4 Heart** | 直接**占用第 4 幕** | 触发"本模组自动顺延为第 5、6 幕"这条路径（`Act4HeartAutoShift`） |
+| 皮肤 / 卡图 / 汉化类（如奥卡皮肤、战士卡图包） | 几十 MB 的资源替换包 | 验证本地化与官方设置界面注入不被资源类模组干扰 |
+
+> 只列出用于**兼容性验证**的模组名，不包含也不分发它们的任何资源。
+一句话：**本分支的目标不是"在我的存档里能跑"，而是"在别人的整合包里也不添乱"。**
+
+---
 ## ✨ 核心功能体系
 
 ### 1. 第 4 幕 · 精英连战（重制层）
@@ -70,7 +103,7 @@
   不吃游戏随机流，Host / Client 各自计算一致，读档一致。
 - **合成节点**：双 Boss 间可插入**合成火堆**（`InterBossHearth` 默认开）或**合成商店**
   （`InterBossShop` 默认关）。实现手法为"虚拟坐标 + 原版节点工厂 + 删直连 + 重串链 + 重画路径 + 重算可通行"
-  （照搬工坊模组 Boss Gauntlet，拆解笔记见下）。
+  （灵感来自工坊模组 Boss Gauntlet；我们的分析笔记见下）。
 - **N10 修正**：进阶 10 的双 Boss 强制**钉回第 3 层**，防止因 Act 列表延长而漂移至末尾。
 
 ### 4. 全程序化视觉主题（零外部素材）
@@ -251,7 +284,8 @@
 | 难度预设（一键档位） | 移除，仅保留 X/Y 系数 + 各层开关 |
 | Desync 诊断 Patch | 移除（`DesyncDiagnosticPatch`） |
 | 第 5 幕的早期实现 | 由本分支的 `Act5/*`（自研节点 + 直线地图 + 双档连战）**替换** |
-| `AvoidAdjacentEncounterDuplicate` / `EncounterDeduplicator` | 旧设计残留（新"确定名单 + 坐标落位"机制已不可能重复），下轮清理 |
+| 早期"地图边缘雾气"叠加层 | 删除（按需求停用后整文件清理：`Act5/ActMapOverlay.cs`） |
+| `AvoidAdjacentEncounterDuplicate` / `EncounterDeduplicator` | 删除（新"确定名单 + 坐标落位"机制已不可能重复） |
 
 ---
 
@@ -312,8 +346,8 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 - 英文 README（`docs/README.en.md`）是本分支中文 README 的译文；**上游**的英文 README 内容更旧。
 - 多人模式**无协议层向后兼容**，升级需所有玩家同步。
 - 极端多 Mod 组合下，其他模组仍可能在读档链丢数据（本 Mod 已加防御兜底避免硬崩）。
-- 早期"地图边缘雾气"叠加层（`Act5/ActMapOverlay.cs`）已按需求停用：**当前不会有雾气**，
-  该文件仅保留给后续"脉络流动"特效，不参与运行。
+- 早期"地图边缘雾气"叠加层已**整文件删除**（`Act5/ActMapOverlay.cs`）：当前不会有雾气；
+  想要"脉络流动"特效的话需要重新实现。
 
 ---
 
@@ -337,7 +371,7 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 - [Alchyr](https://github.com/Alchyr) 的 [BaseLib](https://github.com/Alchyr/BaseLib-StS2) 与 [ModTemplate-StS2](https://github.com/Alchyr/ModTemplate-StS2)
 - [Harmony](https://github.com/pardeike/Harmony)
 - [GlitchedReme](https://github.com/GlitchedReme) 的 [中文 STS2 modding 教程](https://github.com/GlitchedReme/SlayTheSpire2ModdingTutorials)
-- 创意工坊模组 **Boss Gauntlet** 的作者 —— 合成节点（火堆 / 商店）手法照搬自它
+- 创意工坊模组 **Boss Gauntlet** 的作者 —— 合成节点（火堆 / 商店）的**灵感来源**
 
 **兼容性互操作（本分支新增的致谢）**
 
@@ -346,6 +380,11 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 - **YUI 系列扩展**、**Act 4 Heart** 等模组 —— 用于验证"与整幕模组共存"（第 4 幕被占用时自动顺延 5/6）
 - **皮肤 / 卡图 / 汉化类模组** —— 用于验证本地化与设置界面注入不打架
 
+**工具与协作**
+
+- **DeepSeek**（DeepSeek Harness / deepseek-flash）—— 本移植的 **AI 协作方**：代码通读与重构、
+  把 IL 反汇编结论整理成可复用方法、实机问题排查（背景归属 / 名单漂移 / 火堆时序 / 自递归崩溃等），
+  以及仓库文档（README、37 条踩坑指南、待办与交接）的撰写与整理。
 **本分支**
 
 - [@Coll-ed](https://github.com/Coll-ed) —— beta v0.111.0 移植、第 4/5 幕重制、多模组共存改造、排查与文档。

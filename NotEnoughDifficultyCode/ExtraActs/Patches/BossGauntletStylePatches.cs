@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
@@ -11,9 +11,9 @@ using MegaCrit.Sts2.Core.Runs;
 namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 
 /// <summary>
-///     双 boss 的「合成火堆/商店」——**1:1 照搬工坊模组 Boss Gauntlet v0.1.3 的实现结构**。
+///     双 boss 的「合成火堆/商店」——**实现思路对齐工坊模组 Boss Gauntlet v0.1.3（灵感来源）**。
 ///
-/// ## 为什么是照搬而不是自己设计
+/// ## 为什么沿用它的思路而不是自己另设计一套
 /// 我在自己设计上连续失败多次，最后从 IL 里确认：往原版地图里插节点这件事，
 /// **视觉、可通行性、焦点、进入、离开、读档、多人投票**七个环节都得接，
 /// 少接一个就表现为"画出来了但点不动 / 进去卡住 / 读档崩"。
@@ -222,7 +222,6 @@ public static class BossGauntletStylePatches
 
             // 每次回到地图 = 又爬了一层 ⇒ 换一套卷云样式；同时把层色恢复成紫
             var st = RunStateAccessor.GetCurrentState();
-            ActMapOverlay.SetFloor(st?.ActFloor ?? 0);
             if (st?.Act is Act4Model or Act5Model) Act4EliteBackgroundByLayerPatch.ApplyTintForCurrentRoom(st);
         });
     }

@@ -1,4 +1,4 @@
-{
+﻿{
   "NOTENOUGHDIFFICULTY.mod_title": "Not Enough Difficulty",
   "NOTENOUGHDIFFICULTY-ENABLED.title": "Enable this mod",
   "NOTENOUGHDIFFICULTY-ENABLED.description": "Master switch. When off, all gameplay changes stop applying (the custom Acts 4/5 still appear on the map, but no longer alter difficulty or map structure).",
@@ -66,10 +66,6 @@
   "NOTENOUGHDIFFICULTY-ACT4_BOSS_WEIGHT_ACT2.description": "Act 4's top boss is drawn randomly from its boss pool; these weights set each act's share. Bosses already seen in Acts 1-3 are excluded automatically.",
   "NOTENOUGHDIFFICULTY-ACT4_BOSS_WEIGHT_ACT3.title": "Act 3 boss share",
   "NOTENOUGHDIFFICULTY-ACT4_BOSS_WEIGHT_ACT3.description": "Act 4's top boss is drawn randomly from its boss pool; these weights set each act's share. Bosses already seen in Acts 1-3 are excluded automatically.",
-
-  "NOTENOUGHDIFFICULTY-BEHAVIOR_TOGGLES.title": "Behaviour toggles",
-  "NOTENOUGHDIFFICULTY-AVOID_ADJACENT_ENCOUNTER_DUPLICATE.title": "Avoid back-to-back repeats",
-  "NOTENOUGHDIFFICULTY-AVOID_ADJACENT_ENCOUNTER_DUPLICATE.description": "On by default. Reorders Act 4's elites so you rarely fight the same group twice in a row (impossible to fully avoid when the pool is small).",
 
   "NOTENOUGHDIFFICULTY-SPEED.title": "Speed",
   "NOTENOUGHDIFFICULTY-ENABLE_EXTRA_SPEED.title": "Enable extra speed",

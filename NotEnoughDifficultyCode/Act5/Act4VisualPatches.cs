@@ -53,7 +53,6 @@ internal static class Act4EliteBackgroundByLayerPatch
                     // 色相取"该 act 自己的招牌色"（从它的地图美术统计，见 ActVisualTheme.SignatureHue）——
                     // 不用 MapTraveledColor：那三个是近黑 UI 色，暗港(266°)与默认紫(278°)肉眼看不出差别。
                     var hue = ActVisualTheme.SignatureHue(sourceAct);
-                    ActMapOverlay.SetLayerTint(layer);
                     Act4MapStripeTint.SetLayer(layer, hue);
 
                     MainFile.DebugLog(
@@ -64,7 +63,6 @@ internal static class Act4EliteBackgroundByLayerPatch
             }
 
             // 非战斗房（问号/商店/宝箱/火堆）或认不出 act → 回紫
-            ActMapOverlay.SetLayerTint(0);
             Act4MapStripeTint.SetLayer(0, null);
         }
         catch (Exception ex)

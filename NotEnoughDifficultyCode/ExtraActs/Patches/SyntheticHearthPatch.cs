@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
@@ -8,7 +8,7 @@ using MegaCrit.Sts2.Core.Runs;
 namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 
 /// <summary>
-///     双 boss 之间的「合成火堆」——按工坊模组 <c>Boss Gauntlet</c> 的手法实现（见拆解笔记）。
+///     双 boss 之间的「合成火堆」——灵感来自工坊模组 <c>Boss Gauntlet</c>（我们按它的公开行为自行实现，分析见拆解笔记）。
 ///
 /// ## 为什么不能改原版节点
 /// 我最初的做法是"找到第二个 boss 的父节点，把 PointType 改成 RestSite"。
