@@ -1,4 +1,4 @@
-# StS2-NotEnoughDifficulty（还不够难！）· Beta 移植分支
+﻿# StS2-NotEnoughDifficulty（还不够难！）· Beta 移植分支
 
 [English](docs/README.en.md) | 中文
 
@@ -18,7 +18,7 @@
 | 项 | 数据 |
 |---|---|
 | 代码体量 | **67 个 `.cs` / 9,988 行 / 16 个目录** |
-| 改造深度 | 约 **48 个 Harmony Patch 目标**（游戏侧方法）、**313 处日志埋点** |
+| 改造深度 | **60 处 HarmonyPatch 标注**（约 48 个不同的游戏侧目标方法）、**313 处日志埋点** |
 | 本地化 | 完整中英双语（配置项 title + description 全覆盖） |
 | 构建质量 | `dotnet build --no-incremental` **0 错误 0 警告** |
 | 交付形态 | `.dll + .pdb + .pck + .json`；`.pck` 由自研打包器 `tools/MakePck` **程序化生成**，无需安装 Godot |
@@ -229,7 +229,7 @@
 
 ## 🛠️ 工程卖点总结
 
-- **稳健 Patch**：约 48 个 Harmony Patch 点，全部逐类隔离 + 目标存在性校验脚本。
+- **稳健 Patch**：60 处 HarmonyPatch 标注，全部逐类隔离 + 目标存在性校验脚本。
 - **确定性优先**：双 Boss 抽样用稳定散列，名单仅依赖同步数据（Seed + 战绩），多人两端计算一致，
   不引入新随机源。
 - **兼容优先**：层号 / 归属全按数据判定，遇占用自动顺延；与第三方背景钩子**合作而非覆盖**。

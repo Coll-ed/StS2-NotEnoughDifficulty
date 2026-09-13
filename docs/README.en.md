@@ -1,4 +1,4 @@
-# StS2-NotEnoughDifficulty ("Still Not Hard Enough!") · Beta Port Branch
+﻿# StS2-NotEnoughDifficulty ("Still Not Hard Enough!") · Beta Port Branch
 
 English | [中文](../README.md)
 
@@ -20,7 +20,7 @@ broadcast to every player.
 | Item | Value |
 |---|---|
 | Code | **67 `.cs` files / 9,988 lines / 16 directories** |
-| Change surface | ~**48 Harmony patch targets** (game-side methods), **313 logging sites** |
+| Change surface | **60 HarmonyPatch attributes** (~48 distinct game-side target methods), **313 logging sites** |
 | Localization | Full Chinese + English (every config field has a title and a description) |
 | Build quality | `dotnet build --no-incremental` — **0 errors, 0 warnings** |
 | Artifacts | `.dll + .pdb + .pck + .json`; the `.pck` is produced by our own `tools/MakePck` — **no Godot install needed** |
@@ -215,7 +215,7 @@ Discipline:
 | `[ModCompat]` | Startup compatibility report | `[ModCompat] 关键 patch 点上的其它 mod：…` |
 | `[PatchScope]` | Patch isolation | `Patch class X failed (skipped)` |
 
-The full table (33 tags) is in the Chinese README ([`../README.md`](../README.md)).
+The full table is in the Chinese README ([`../README.md`](../README.md)).
 
 ### A complete evidence chain
 
@@ -253,7 +253,7 @@ whether the map was recoloured as intended.
 
 ## 🛠️ Engineering highlights
 
-- **Robust patching**: ~48 Harmony patch points, all isolated per class, plus a target-existence check script.
+- **Robust patching**: 60 HarmonyPatch attributes, all isolated per class, plus a target-existence check script.
 - **Determinism first**: stable hashing for double-boss picks; the roster only depends on synced data
   (seed + record) so both ends compute the same result — no new random source.
 - **Compatibility first**: layer and ownership decisions are all data-driven, and we shift acts instead of
