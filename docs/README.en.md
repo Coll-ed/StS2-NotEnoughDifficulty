@@ -8,7 +8,7 @@ English | [中文](../README.md)
 > - **Tooling & collaboration**
 
 - **DeepSeek** (DeepSeek Harness / deepseek-flash) — the **AI collaborator** on this port: reading and
-  refactoring the code, turning IL disassembly into reusable conclusions, tracking down the in-game issues
+  refactoring the code, turning assembly-IL analysis into reusable conclusions, tracking down the in-game issues
   (background ownership, roster drift, rest-site ordering, the self-recursion crash, …), and writing the
   repository documentation (this README, the 37-pitfall guide, the handover notes).
 **This branch**: `beta-0.111-port` — a port + expansion branch **commissioned by the original author**
@@ -253,12 +253,19 @@ so it cannot be destroyed with the scene.
 Our own tools (in `tools/`):
 
 - **`MakePck`** — generates the `.pck` programmatically (no Godot install).
-- **`DumpIl`** — disassembles game / mod DLLs; every "how does the game actually work" conclusion in this
-  project came from it.
-- **`DumpApi` / `DumpStrings` / `FindRef` / `EnumProbe`** — type listings, string extraction, call-site
-  search, enum probing.
+- **`DumpIl`** — a **read-only assembly analyser** built on **Mono.Cecil**: it reads the type / method
+  signatures and IL of locally installed assemblies to confirm how the game behaves (standard practice when
+  developing mods). Every "how the game actually works" conclusion in this project came from it plus real
+  logs, not from guessing.
+- **`DumpApi` / `DumpStrings` / `FindRef` / `EnumProbe`** — type listings, string-table extraction, call-site
+  search and enum probing; also read-only analysis, used to understand behaviour. No game code is produced or
+  bundled.
 - **`check-patch-targets.ps1`** — verifies that every Harmony patch target really exists in the target DLL, so
   patches cannot fail silently.
+
+> **Compliance note**: the tools above are **read-only** (they read metadata/IL of locally installed
+> assemblies) and are used to confirm behaviour and compatibility. This repository **does not contain, modify
+> or redistribute** the game itself or any third-party mod's code or assets.
 
 Discipline:
 
@@ -516,7 +523,7 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 **Tooling & collaboration**
 
 - **DeepSeek** (DeepSeek Harness / deepseek-flash) — the **AI collaborator** on this port: reading and
-  refactoring the code, turning IL disassembly into reusable conclusions, tracking down the in-game issues
+  refactoring the code, turning assembly-IL analysis into reusable conclusions, tracking down the in-game issues
   (background ownership, roster drift, rest-site ordering, the self-recursion crash, …), and writing the
   repository documentation (this README, the 37-pitfall guide, the handover notes).
 **This branch**
