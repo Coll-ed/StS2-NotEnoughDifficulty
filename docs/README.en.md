@@ -58,6 +58,71 @@ mods over the same ground**. This branch treats compatibility as a hard requirem
 | **Act 4 Heart** | Directly **occupies act 4** | Exercises the "shift to acts 5 and 6" path (`Act4HeartAutoShift`) |
 | Skin / card-art / localization packs (e.g. Orca skin, Ironclad card art) | Tens of MB of asset replacements | Confirms localization and official-settings injection are not disturbed by asset mods |
 
+**Field case: two consecutive days of full clears inside a 57-mod pack**
+
+> With the mods below (54 of them confirmed initialised in this machine's log) **plus this mod** enabled at the
+> same time, the pack was **cleared successfully on two consecutive days, stable, with no errors**.
+> This is not theoretical compatibility - it is a run that actually happened.
+
+<details><summary>Expand: the mods enabled in this test (54)</summary>
+
+- [咲夜 Mod] Touhou Sakuya Mod [Sts2TouhouSakuya] (v0.3.5) workshopId=3792102938
+- Act 4 Heart [Act4Heart] (1.1.7) workshopId=3747537811
+- Acts from the Past [ActsFromThePast] (1.0.5) workshopId=3746969593
+- AnimeWaifuSilent (v1.4.3) workshopId=3748864970
+- BaseLib (v3.4.7) workshopId=3737335127
+- BetterAnimation2 (0.6.1) workshopId=3777276296
+- BetterSovereignBlade (0.1.0) workshopId=3747579880
+- BossSkin (0.0.4) workshopId=3795439955
+- Bullet Time: As Depicted [BulletTimeAnime] (0.3.3) workshopId=3772619739
+- CharacterSkinManager (v0.0.3+sts2.0.108.0.2)
+- Classic Mode [ClassicMode] (0.1.20) workshopId=3749025602
+- CVC-跨版本兼容补丁 [CrossVersionCompat] (v0.9.29) workshopId=3783150604
+- Gluton's Ascensions [GlutonsAscensions] (v1.4.6) workshopId=3747530530
+- HeartShake (0.1.0) workshopId=3799286717
+- Higher Resolution Cards [HighResolutionCards] (v0.1.1) workshopId=3749618558
+- Infinite Defect Orb Slots [InfiniteDefectOrbSlots] (v0.2.5) workshopId=3753669351
+- Merchant2CuteII (v1.5.3) workshopId=3748331824
+- Minty Spire 2 [MintySpire2] (v1.2.0) workshopId=3737336234
+- More Upgrades [MoreUpgrades] (v1.1.0) workshopId=3747695713
+- MoreCharacterFX (v0.0.1) workshopId=3747579486
+- MoreDollRelics (0.8-beta) workshopId=3747525077
+- Multiplayer Potion View [STS2-MultiPlayerPotionView] (0.3.3) workshopId=3747606792
+- NecrobinderFemPortraits (v0.1.3) workshopId=3747767062
+- necrobinderSkin (0.9.1) workshopId=3747597614
+- neowSkin (0.0.1) workshopId=3747611326
+- RedMist (0.1.0) workshopId=3748217244
+- RelicCombo (0.11.4) workshopId=3755470556
+- RitsuLib [STS2-RitsuLib] (0.5.20) workshopId=3747602295
+- Show Player Hand Cards [STS2-ShowPlayerHandCards] (0.6.4) workshopId=3747606660
+- silentSkin (0.7.1) workshopId=3747591649
+- SovereignBladeFullArt (v0.0.2) workshopId=3747611023
+- StS2 Clone Optimizer [Sts2CloneOptimizer] (v0.1.0) workshopId=3747573917
+- STS2 Skin Manager [Sts2SkinManager] (0.27.4) workshopId=3747513223
+- VoiceMod [voicemod] (1.13.0) workshopId=3780124701
+- Voltaic: As Depicted [VoltaicAnime] (0.1.2) workshopId=3773873081
+- Watcher (0.9.28) workshopId=3747526116
+- YUICardExpansion (1.0.1) workshopId=3747562908
+- YUICore (1.0.1) workshopId=3747562679
+- YUISpireExpansion (1.0.1) workshopId=3747563416
+- 储君卡图娘化 [RegentFemPortraits] (v1.0) workshopId=3747751411
+- 弹幕尖塔 DanmakuSpire [DanmakuSpire] (v1.2.1) workshopId=3779807977
+- 更多的假遗物 [Fake Merchant Expansion] (1.2.6) workshopId=3750281026
+- 更好的角色遗物 [BetterCharacterRelics] (1.1.4) workshopId=3747717457
+- 还不够难！(Not Enough Difficulty) [NotEnoughDifficulty] (1.0.1)
+- 尖塔：琐事 [STS2_Things] (1.9.5) workshopId=3747607944
+- 奖励附魔 [RewardEnchants] (0.3.0) workshopId=3779541807
+- 卡牌融合 [CardFusion] (1.4.6) workshopId=3747615796
+- 可重复附魔 [RepeatableEnchantments] (0.2.0) workshopId=3749669062
+- 门扉Mod [DoormakerMod] (1.0.0) workshopId=3747565151
+- 模组配置 ModConfig [BonModConfig] (0.1.6) workshopId=3749062616
+- 能指任何人 [TargetAnyone] (0.4.0) workshopId=3768183266
+- 万象辉星[RegentFX] [RegentFX] (0.5.1) workshopId=3747497501
+- 向建筑师投掷药水 [ThrowPotionsAtArchitect] (1.4.1) workshopId=3785664177
+- 招架弹反 [ParryMod] (0.5.2) workshopId=3747666429
+
+</details>
+
 > Only mod **names** are listed for compatibility validation; none of their assets are included or redistributed.
 In one line: **the goal is not "works on my save", it is "does not make a mess inside someone else's modpack".**
 

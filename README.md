@@ -55,6 +55,70 @@
 | **Act 4 Heart** | 直接**占用第 4 幕** | 触发"本模组自动顺延为第 5、6 幕"这条路径（`Act4HeartAutoShift`） |
 | 皮肤 / 卡图 / 汉化类（如奥卡皮肤、战士卡图包） | 几十 MB 的资源替换包 | 验证本地化与官方设置界面注入不被资源类模组干扰 |
 
+**实战案例：57 个模组的整合包里连续两天通关**
+
+> 在下列模组（作者环境，本机日志可确认其中 **54 个**在本局完成初始化）+ **本模组**同时启用的情况下，
+> **连续 2 天成功通关该整合，稳定不报错**。这不是"理论兼容"，是实打实跑出来的。
+
+<details><summary>展开：实测同时启用的模组（54 个）</summary>
+
+- [咲夜 Mod] Touhou Sakuya Mod [Sts2TouhouSakuya] (v0.3.5) workshopId=3792102938
+- Act 4 Heart [Act4Heart] (1.1.7) workshopId=3747537811
+- Acts from the Past [ActsFromThePast] (1.0.5) workshopId=3746969593
+- AnimeWaifuSilent (v1.4.3) workshopId=3748864970
+- BaseLib (v3.4.7) workshopId=3737335127
+- BetterAnimation2 (0.6.1) workshopId=3777276296
+- BetterSovereignBlade (0.1.0) workshopId=3747579880
+- BossSkin (0.0.4) workshopId=3795439955
+- Bullet Time: As Depicted [BulletTimeAnime] (0.3.3) workshopId=3772619739
+- CharacterSkinManager (v0.0.3+sts2.0.108.0.2)
+- Classic Mode [ClassicMode] (0.1.20) workshopId=3749025602
+- CVC-跨版本兼容补丁 [CrossVersionCompat] (v0.9.29) workshopId=3783150604
+- Gluton's Ascensions [GlutonsAscensions] (v1.4.6) workshopId=3747530530
+- HeartShake (0.1.0) workshopId=3799286717
+- Higher Resolution Cards [HighResolutionCards] (v0.1.1) workshopId=3749618558
+- Infinite Defect Orb Slots [InfiniteDefectOrbSlots] (v0.2.5) workshopId=3753669351
+- Merchant2CuteII (v1.5.3) workshopId=3748331824
+- Minty Spire 2 [MintySpire2] (v1.2.0) workshopId=3737336234
+- More Upgrades [MoreUpgrades] (v1.1.0) workshopId=3747695713
+- MoreCharacterFX (v0.0.1) workshopId=3747579486
+- MoreDollRelics (0.8-beta) workshopId=3747525077
+- Multiplayer Potion View [STS2-MultiPlayerPotionView] (0.3.3) workshopId=3747606792
+- NecrobinderFemPortraits (v0.1.3) workshopId=3747767062
+- necrobinderSkin (0.9.1) workshopId=3747597614
+- neowSkin (0.0.1) workshopId=3747611326
+- RedMist (0.1.0) workshopId=3748217244
+- RelicCombo (0.11.4) workshopId=3755470556
+- RitsuLib [STS2-RitsuLib] (0.5.20) workshopId=3747602295
+- Show Player Hand Cards [STS2-ShowPlayerHandCards] (0.6.4) workshopId=3747606660
+- silentSkin (0.7.1) workshopId=3747591649
+- SovereignBladeFullArt (v0.0.2) workshopId=3747611023
+- StS2 Clone Optimizer [Sts2CloneOptimizer] (v0.1.0) workshopId=3747573917
+- STS2 Skin Manager [Sts2SkinManager] (0.27.4) workshopId=3747513223
+- VoiceMod [voicemod] (1.13.0) workshopId=3780124701
+- Voltaic: As Depicted [VoltaicAnime] (0.1.2) workshopId=3773873081
+- Watcher (0.9.28) workshopId=3747526116
+- YUICardExpansion (1.0.1) workshopId=3747562908
+- YUICore (1.0.1) workshopId=3747562679
+- YUISpireExpansion (1.0.1) workshopId=3747563416
+- 储君卡图娘化 [RegentFemPortraits] (v1.0) workshopId=3747751411
+- 弹幕尖塔 DanmakuSpire [DanmakuSpire] (v1.2.1) workshopId=3779807977
+- 更多的假遗物 [Fake Merchant Expansion] (1.2.6) workshopId=3750281026
+- 更好的角色遗物 [BetterCharacterRelics] (1.1.4) workshopId=3747717457
+- 还不够难！(Not Enough Difficulty) [NotEnoughDifficulty] (1.0.1)
+- 尖塔：琐事 [STS2_Things] (1.9.5) workshopId=3747607944
+- 奖励附魔 [RewardEnchants] (0.3.0) workshopId=3779541807
+- 卡牌融合 [CardFusion] (1.4.6) workshopId=3747615796
+- 可重复附魔 [RepeatableEnchantments] (0.2.0) workshopId=3749669062
+- 门扉Mod [DoormakerMod] (1.0.0) workshopId=3747565151
+- 模组配置 ModConfig [BonModConfig] (0.1.6) workshopId=3749062616
+- 能指任何人 [TargetAnyone] (0.4.0) workshopId=3768183266
+- 万象辉星[RegentFX] [RegentFX] (0.5.1) workshopId=3747497501
+- 向建筑师投掷药水 [ThrowPotionsAtArchitect] (1.4.1) workshopId=3785664177
+- 招架弹反 [ParryMod] (0.5.2) workshopId=3747666429
+
+</details>
+
 > 只列出用于**兼容性验证**的模组名，不包含也不分发它们的任何资源。
 一句话：**本分支的目标不是"在我的存档里能跑"，而是"在别人的整合包里也不添乱"。**
 
