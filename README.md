@@ -8,8 +8,8 @@
 > - **适配环境**：StS2 **Public Beta v0.111.0**（MegaDot / Godot 4.5.1）+ **BaseLib 3.4.7**
 > - **移植**：[@Coll-ed](https://github.com/Coll-ed)；沿用上游 `LICENSE`
 
-给《Slay the Spire 2》把原版 3 层塔扩展为 **5+1 层**的深度 Mod：单人 / 多人联机均可用，
-多人下 host 端配置会自动同步给所有玩家。
+给《Slay the Spire 2》把原版 3 层塔扩展为 **5 层**的深度 Mod（第 4 幕若被其它模组占用，
+本模组的两个幕会自动顺延为**第 5、6 幕**）：单人 / 多人联机均可用，多人下 host 端配置会自动同步给所有玩家。
 
 ---
 
@@ -192,7 +192,6 @@
 | `[RunProgress]` | 敌人归属判定 | `[RunProgress] 'X' 有 3 个候选 act：Glory(默认) / … ⇒ 取 '…'` |
 | `[ModCompat]` | 兼容性报告 | `[ModCompat] 关键 patch 点上的其它 mod：…` |
 | `[BossInventory]` | BOSS 清点 | `[BossInventory] 当前层=… BossEncounter=… SecondBoss=…` |
-| `[Overlay]` | 程序化 Overlay | `[Overlay] 边缘雾气层已挂上（神话档=False）` |
 | `[Settings]` / `[Slider]` | 设置页注入 | `Settings injection: slider row 'MO_ExtraSpeedMultiplierRow' inserted at index 6` |
 | `[ConfigSync]` | 联机同步状态 | 广播 / ack / 超时 / 拒绝开局的每一步 |
 | `[PatchScope]` | Patch 隔离 | `Patch class X failed (skipped)` |
@@ -310,9 +309,11 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 
 - 本分支使用 `_refs\` 本地引用 + 离线 NuGet Feed 构建，合入上游前可能需切换引用方式。
 - 部分修复**仅对新建地图生效**（旧存档已生成的幕不会补全，如第 5 幕火堆数量）。
-- `docs/README.en.md` 仍为上游版本，落后于本分支。
+- 英文 README（`docs/README.en.md`）是本分支中文 README 的译文；**上游**的英文 README 内容更旧。
 - 多人模式**无协议层向后兼容**，升级需所有玩家同步。
 - 极端多 Mod 组合下，其他模组仍可能在读档链丢数据（本 Mod 已加防御兜底避免硬崩）。
+- 早期"地图边缘雾气"叠加层（`Act5/ActMapOverlay.cs`）已按需求停用：**当前不会有雾气**，
+  该文件仅保留给后续"脉络流动"特效，不参与运行。
 
 ---
 

@@ -1,251 +1,385 @@
-﻿# StS2-NotEnoughDifficulty
+# StS2-NotEnoughDifficulty ("Still Not Hard Enough!") · Beta Port Branch
 
 English | [中文](../README.md)
 
-A mod for *Slay the Spire 2* that expands the original 3-act tower into a **5-act tower** and adds a full suite of *
-*per-act difficulty, map, and enemy-pool** controls. Works in both single-player and multiplayer; in multiplayer the
-host's configuration is synced to every player.
+> ### Branch identity
+> - **Upstream (original design & implementation, copyright held by the original author)**:
+>   <https://github.com/bwnotfound/StS2-NotEnoughDifficulty>
+> - **This branch**: `beta-0.111-port` — a port + expansion branch **commissioned by the original author**
+> - **Target environment**: StS2 **Public Beta v0.111.0** (MegaDot / Godot 4.5.1) + **BaseLib 3.4.7**
+> - **Ported by**: [@Coll-ed](https://github.com/Coll-ed); uses the upstream `LICENSE`
 
-> Current version **1.0.1**. Migrated to the latest game build and rebuilt on **BaseLib v3.3.0**'s registration-based
-> localization.
-
----
-
-## Overview
-
-Two pain points in the base game (especially multiplayer):
-
-1. **It ends after three acts** — runs feel short.
-2. **Difficulty is tuned for solo** — when several players gang up on the same enemies, the challenge is too low.
-
-This mod adds **Act 4 (all elites)** and **Act 5 (with the final boss)** after the base 3 acts, plus per-act HP/damage
-multipliers, difficulty presets, map-length control, an enemy removal list, an extra speed mode, and more. In
-multiplayer, ack-based config sync ensures all players start the run with the host's settings.
+Turns the vanilla 3-act tower of *Slay the Spire 2* into a **5+1 act** run, with per-act control over
+difficulty, maps and enemy pools. Works in single-player and co-op; in multiplayer the host's config is
+broadcast to every player.
 
 ---
 
-## Features
+## 📊 Project size & delivery
 
-### 1. Custom Acts 4 / 5
-
-- **Act 4**: an all-elite act. Every map node is forced to an elite-combat icon; encounter content is mixed from the
-  elite pools of acts 1–3 by configurable weights.
-- **Act 5**: an act containing the final boss. Mid-act combat nodes use boss-strength fights, with the real final boss
-  at the top.
-- Each act has independent ancient / event pools, treasure rooms, and rest sites; bosses don't repeat across earlier
-  acts.
-
-### 2. Difficulty Multipliers (per act)
-
-- **Overall**: a single HP / damage knob per act, applied on top of everything else — the most direct way to tune
-  overall difficulty.
-- **Global**: regular-enemy HP/damage can interpolate linearly from "start → end" over act progress; bosses use a single
-  multiplier.
-- **Source (Src)**: an additional multiplier based on the enemy's origin act (act 1/2/3) — e.g. act-1 enemies and act-3
-  enemies encountered in Act 4 can be scaled differently.
-
-### 3. Difficulty Presets (one-click)
-
-Three preset buttons — **Easy / Hard / Extreme** — set the Act 4/5 overall HP/damage multipliers in one click (only the
-four Overall values; weights and detailed settings are left untouched, so behavior is predictable). Preset values are
-defined centrally in code for easy balance tweaking.
-
-### 4. Map Length & Room Density
-
-- Each act's map length (number of rows) is independently configurable (defaults: act1=16 / act2=15 / act3/4/5=14,
-  matching vanilla).
-- Gated behind a **master toggle (off by default)**: length changes only apply when enabled, and the per-act sliders are
-  hidden while disabled — so players don't change the map structure unknowingly.
-- When length increases, the density of special rooms (elite / rest / unknown) is **scaled accordingly** so the map
-  isn't diluted by normal fights; very long maps also **skip the exponential path-pruning** step for performance.
-
-### 5. Enemy Removal List
-
-- A custom popup (opened from the "Manage" button in the config page) scans the game's registered **normal / elite /
-  boss** encounters and offers three dropdowns to add enemies to a removal list, with add/remove support and fallbacks
-  for duplicate add/remove and pool exhaustion.
-- Enemy names in the dropdowns/list carry a **layer suffix** (e.g. `(Act 1)`) to help gauge each pool's size; entries
-  that can't be mapped to a layer are tagged `(Other)`.
-- Includes a **scope toggle**: defaults to "all acts (1–5)", optionally switchable to "only Acts 4–5".
-- Removed enemies are excluded from the corresponding act's draw (base acts use replacement-based filtering to avoid
-  emptying a pool and failing to spawn fights).
-
-### 6. Extra Speed Mode
-
-- Injects two rows (enable toggle + multiplier slider) into the **game's official settings screen**, kept **value-synced
-  ** with the mod config screen.
-- Provides combat/animation speed multipliers beyond the vanilla cap for faster runs.
-
-### 7. Pool Weight Mixing
-
-Act 4/5 encounter / event / boss / ancient pools are mixed from acts 1–3 by user-configured weights. Weights are
-auto-normalized on save (sum = 1); all-zero falls back to defaults to avoid division by zero.
-
-### 8. Multiplayer Config Sync (ack-based)
-
-In multiplayer, the host's full mod config is automatically synced to all clients for the duration of the run; clients
-restore their local config from disk afterward. If a client is too old or sync fails, the host shows a popup and refuses
-to start the run, avoiding mid-combat value mismatches.
-
-### 9. Save-Load Robustness
-
-For multi-mod setups (where another mod drops data while handling the extra acts on the `FromSerializable` chain), a
-defensive guard fills null room id-lists on load to avoid a hard crash, and logs diagnostics for the affected act.
+| Item | Value |
+|---|---|
+| Code | **67 `.cs` files / 9,988 lines / 16 directories** |
+| Change surface | ~**48 Harmony patch targets** (game-side methods), **313 logging sites** |
+| Localization | Full Chinese + English (every config field has a title and a description) |
+| Build quality | `dotnet build --no-incremental` — **0 errors, 0 warnings** |
+| Artifacts | `.dll + .pdb + .pck + .json`; the `.pck` is produced by our own `tools/MakePck` — **no Godot install needed** |
+| Self-contained build | Game / BaseLib assemblies come from a local `_refs\` folder, NuGet from a local offline feed ⇒ **builds with zero network access** |
 
 ---
 
-## Installation
+## ✨ Core features
 
-### Dependencies
+### 1. Act 4 · Elite gauntlet (rebuilt)
 
-- *Slay the Spire 2* base game
-- [BaseLib](https://github.com/Alchyr/BaseLib-StS2) **v3.3.0** (strict version — multiplayer validates the exact mod
-  version string)
+The act is "fight every base elite in the game once" — independent of what you skipped earlier.
+
+- **Dynamic roster**: all base elites of the current version (**12** in beta v0.111.0: Overgrowth 3 +
+  Underdocks 3 + Hive 3 + Glory 3), de-duplicated, in a fixed order (layer 1→3, pool order inside an act).
+  **No number or act type is hardcoded** — act variants added by whole-act mods, and their elites, are picked
+  up automatically.
+- **Coordinate placement**: after the map is generated, the roster is pinned onto the combat rooms
+  "nearest-to-start first" (BFS depth → column) as a `Dictionary<MapCoord, Encounter>`; when you enter a room
+  the encounter is looked up by `RunState.CurrentMapCoord`.
+  ⇒ **fully deterministic, duplicates impossible**, and save/load safe (the coordinate is the identity).
+- **Adaptive depth**: depth is increased one step at a time until "combat rooms ≥ roster size"; surplus combat
+  slots become rest sites, and if we are short, question marks become elites. The depth cap scales with the
+  roster, so large content modpacks still fit.
+- **Icons & compatibility**: every combat room in this act uses the elite icon, and their count equals the
+  roster size exactly. The encounter hook only takes over when "this act is ours **and** the coordinate has a
+  placement"; everything else falls through to vanilla.
+
+### 2. Act 5 · Legend / Myth gauntlet
+
+Two modes, switched by the `Act5Difficulty` config:
+
+- **Trial**: Ancient Name → 2 random bosses → final boss (the one currently assigned), no rest sites.
+- **Myth**: cycles through bosses "not defeated **before entering this act**", the layer-3 pick headlines as
+  the final boss, and **rest sites = fights − 1** (one between every two fights).
+
+Implementation notes:
+
+- **Custom map node `Act5BossNode`** (derived from `NMapPoint`, not a reused vanilla node): its icon follows
+  its own encounter (spine skeleton preferred, otherwise `*_icon.png` / `*_icon_outline.png`); clicking is
+  gated on the raw state machine (`State == Travelable`, because vanilla's `IsTravelable` is short-circuited
+  by debug travel). Focus / press / release, the vote container and the reticle are all re-implemented.
+- **Straight-line map `Act5LinearMap`**: start (Ancient Name) → chain slots (disguised boss / rest site
+  alternating) → `BossMapPoint` (final boss). The number of slots is generated dynamically and the row count
+  adapts.
+- **Disguised bosses**: boss icon and boss encounter, but **settled as a monster room** (monster-level
+  rewards, does not end the act).
+- **Ending gate**: only a fight **on the final-boss node** ends the act (`IsAtFinalBossNode`) — decoupled from
+  the roster, so it can never drift.
+- **Layout**: ≤3 slots straight / 4–6 forked (rest site centered) / ≥7 serpentine columns; the whole chain is
+  scaled and centered so it never leaves the map.
+- **Procedural effects**: boss icons are recoloured (Legend = black & gold, Myth = blood), plus a flowing
+  light effect on the map veins.
+
+### 3. Double bosses and synthetic map nodes
+
+- **Per-act switches**: `Act1_DoubleBoss` … `Act4_DoubleBoss` (off by default).
+- **Stable sampling**: the second boss is drawn from that act's own pool (first one excluded) using an
+  **FNV-1a stable hash** — it never consumes the game's RNG, so host and client compute the same result and
+  save/load is consistent.
+- **Synthetic nodes**: a synthetic rest site (`InterBossHearth`, on by default) or shop (`InterBossShop`, off
+  by default) can be inserted between the two bosses. The technique is "virtual coordinate + vanilla node
+  factory + remove direct link + re-chain + redraw paths + recompute travelability", copied from the workshop
+  mod *Boss Gauntlet* (see the teardown notes below).
+- **Ascension 10 fix**: N10's double boss is pinned back to **act 3**, so it cannot drift to the end of the
+  act list after this mod extends the run.
+
+### 4. Fully procedural visuals (no third-party assets)
+
+- **Combat background redirect**: elite fights inside this mod's acts use "the act the enemy belongs to".
+  Implemented by **rewriting `parentAct`**, so vanilla and **third-party background hooks keep working** — we
+  do not stomp on another mod's custom arena.
+- **Map vein recolouring**: the hue comes from that act's own map art (a saturation-weighted hue histogram
+  peak, i.e. its "signature hue"), not from the near-black UI colour; stepping on a question mark / shop /
+  treasure / rest site returns to the default purple. The recolouring lives in
+  `ActModel.get_MapTopBg/MidBg/BotBg` (cache key includes the hue) and the vanilla re-bind is triggered when
+  the layer changes.
+- **Act 5 backdrops**: Legend = parchment with **per-run random** golden veins (derived from the run seed);
+  Myth = blood-soaked (blood-coloured rim, dark red interior with veins, density driven by low-frequency
+  noise).
+
+### 5. Difficulty system
+
+- **New formula** (replacing the upstream "three-stage multiplier chain"): HP
+  `1 + ActFloor × 0.1 × Y/100`, damage `1 + ActFloor × 0.05 × X/100`; only applied when that act's extra
+  scaling is enabled (`ActX_ExtraScaling`, on by default for acts 4/5).
+- **Runtime HP patch**: besides setting HP at spawn, it also intercepts **in-combat max-HP changes**
+  (TestSubject revival, ToughEgg hatching, centipede-style revival through `Heal`/`SetMaxHp`) so the
+  multiplier cannot be bypassed.
+- **Multi-mod aggregation**: pools are aggregated through `ModelDb.ActsByIndex`, so act variants from
+  whole-act mods are included.
+
+### 6. Multiplayer guarantees
+
+- **Ack-based config sync**: host broadcasts the config → each client applies it and acks → **the host only
+  starts once every client has acked**. Timeouts / failures refuse to start and show a popup instead of
+  starting with mismatched configs. Both `StartRunLobby` and `LoadRunLobby` share this flow.
+- **Deterministic hash fallback**: makes the `ModelDb` hash computation deterministic, removing handshake
+  failures caused by differing mod environments (experimental).
+- **Local-only switches**: e.g. the extra-speed multiplier is marked `[ConfigSyncIgnore]`, so every player can
+  set their own.
+
+### 7. Official settings screen injection
+
+This mod's switches (e.g. "enable extra speed" / "speed multiplier") are injected into the **game's own
+settings screen**, right next to the Fast Mode row: a vanilla row is cloned as a template, given a unique
+name, and the vanilla row factory / router is patched to create and refresh it. The official UI, the BaseLib
+config UI and the on-disk cfg stay in sync in all three directions.
+
+### 8. Extra speed
+
+Engine-level `TimeScale` acceleration that stacks multiplicatively with the game's built-in Fast Mode. Purely
+local, so it does not affect multiplayer sync. Implemented as a static controller rather than a Node subclass,
+so it cannot be destroyed with the scene.
+
+### 9. Compatibility layer (a hard requirement here)
+
+| Situation | Strategy |
+|---|---|
+| Another mod adds act variants | The layer index is **derived from data** (`ModelDb.ActsByIndex` / `RunState.Acts` / `act.Index`) — never hardcoded by type |
+| Another mod occupies act 4 | This mod's two acts **shift to acts 5 and 6** and stay at the end of the list; `Act4HeartAutoShift` can disable it; the `Act4_*` / `Act5_*` switches still only control **our own** acts |
+| Another mod adds elites / bosses | They enter the act-4 roster / act-5 plan automatically (through each act's own pool) |
+| The roster would change as you fight | The roster is computed from the record **before entering the act** ⇒ constant for the whole act, save/load consistent |
+| Another mod draws its own background | We only rewrite `parentAct`; the other mod's hooks run as usual — no takeover |
+| Another mod changes the map / nodes | We only replace our own nodes; chaining and travelability stay with vanilla `RecalculateTravelability` |
+| Another mod patches the same method | `ModCompat` detects it at runtime, yields, and prints a **compatibility report** at startup |
+| Old saves | Class and field names are kept; defensive load guards rebuild lost mod-act data deterministically |
+
+### 10. Engineering & tooling
+
+Our own tools (in `tools/`):
+
+- **`MakePck`** — generates the `.pck` programmatically (no Godot install).
+- **`DumpIl`** — disassembles game / mod DLLs; every "how does the game actually work" conclusion in this
+  project came from it.
+- **`DumpApi` / `DumpStrings` / `FindRef` / `EnumProbe`** — type listings, string extraction, call-site
+  search, enum probing.
+- **`check-patch-targets.ps1`** — verifies that every Harmony patch target really exists in the target DLL, so
+  patches cannot fail silently.
+
+Discipline:
+
+- **Per-class patch isolation** — every patch class runs in its own try/catch; a failure only prints
+  `Patch class X failed (skipped)` and never takes the whole mod down.
+- **Diagnostics first** — every patch entry logs unconditionally, so you can tell "not called / early return /
+  threw" apart at a glance.
+
+### 11. Documentation index
+
+| Document | Content |
+|---|---|
+| `杀戮尖塔2-mod写作踩坑指南.md` | 37 real-world pitfalls + 12 chapters of methodology (Chinese) |
+| `待办与交接-第三阶段.md` | Progress, TODOs, hard facts (handover entry point) |
+| `BossGauntlet-合成节点法-拆解笔记.md` | Full teardown of inserting custom nodes into the map |
+| `README-移植与构建.md` | Porting differences and offline build steps |
+
+---
+
+## 🔍 Debug logging (the most underrated part)
+
+### Principles
+
+1. **One switch**: `General → Debug logging` (`DebugLogging`, off by default). When on, every decision the mod
+   makes leaves a readable log line.
+2. **Log first**: every patch entry logs unconditionally, so "was it even called?" is answered immediately.
+3. **Logs are the evidence chain**: every internal-mechanism conclusion came from logs + IL; the debugging flow
+   is "search by tag → inspect the decision inputs → locate the branch".
+4. **Flood warning**: a normal run is tens of KB; if the log jumps to MBs, something is looping (we once
+   captured **9.3 MB / 68,000 lines**, of which **42,629 lines** were the same three lines repeating in a
+   self-recursion crash).
+
+### Log tag reference (excerpt)
+
+| Tag | Answers | Example |
+|---|---|---|
+| `[Act4] 精英落位` | Act-4 roster and order for this run | `[Act4] 精英落位: 12 个战斗房 ← 名单 12 个 \| 由下往上 = BYGONE_EFFIGY_ELITE → … → SOUL_NEXUS_ELITE` |
+| `[Act4] 战斗房 (c,r) → 指定精英` | Which enemy is on a given cell | `[Act4] 战斗房 (3,5) → 指定精英 'PHROG_PARASITE_ELITE'` |
+| `[Act4] 本场来源` | Which act the enemy belongs to | `[Act4] 本场来源 = 'X' → act 层 1 / 'Underdocks'（旅行色 180F24 / 招牌色相 258°）` |
+| `[ActDepth]` | Depth solving and convergence | `[ActDepth] 收敛: 深度 8 rooms → 战斗房 15 ≥ 目标 12（逐格 0 轮）` |
+| `[Act5] BOSS 编排` | Act-5 boss sequence and mode | `[Act5] BOSS 编排（极限）: 伪装=A → B → … → J \| 火堆间隔=True \| 最终BOSS='AEONGLASS_BOSS'` |
+| `[Act5LinearMap] 建图` | Map skeleton parameters | `[Act5LinearMap] 建图: 网格 7x21 \| 链位 19（伪装BOSS 10 + 火堆 9） \| BOSS(3,20) = BossMapPoint` |
+| `[Act5Mid] 巡检` | Per-slot travelability and state machine | `[Act5Mid] 巡检 (3,5) Monster: 前一个已走=True … State=Travelable→Travelable 可点=False` |
+| `[Act5BossNode]` | Custom node lifecycle | `(3,1) 美术子树已搬入 \| size=(374,306) …` |
+| `[Act5] 伪装BOSS` | Room-type rewrite | `[Act5] 'X' 不在最终BOSS节点 ⇒ 房间类型 Boss → Monster（按小怪结算）` |
+| `[Act5] …不结束本幕` | Ending gate interception | `[Act5] 伪装BOSS 奖励界面「继续」→ 不结束本幕…` |
+| `[背景折返]` | Combat-background ownership | `[背景折返] 'X'：parentAct Act4Model → 'TheBeyondAct'（自带背景=False）` |
+| `[Theme]` / `[Stripe]` | Procedural textures and hue | `[Theme] 'Underdocks' 招牌色相 = 258°` / `[Stripe] 地图纹路 → 层 1，色相 258°` |
+| `[DoubleBoss]` | Per-act layer detection | `[DoubleBoss] 本局 act 分层判定：1=Overgrowth(Index=0) \| 2=某模组Act2(Index=1)` |
+| `[ActLayout]` | Act shift detection | `[ActLayout] 检测到第 4 幕已被 'X（HeartAct）' 占用 ⇒ 本模组自动顺延为第 5/6 幕` |
+| `[Gauntlet]` / `[SynthHearth]` | Synthetic node injection | `[Gauntlet] 注入结果 = True` |
+| `[MapGuard]` | Stuck-click interception | `[MapGuard] 忽略对「当前所在坐标」的点击 (3,1) —— 不投票` |
+| `[ModCompat]` | Startup compatibility report | `[ModCompat] 关键 patch 点上的其它 mod：…` |
+| `[PatchScope]` | Patch isolation | `Patch class X failed (skipped)` |
+
+The full table (33 tags) is in the Chinese README ([`../README.md`](../README.md)).
+
+### A complete evidence chain
+
+A single fight can be reconstructed end-to-end from the log:
+
+```text
+[ActDepth]      收敛: 深度 8 rooms → 战斗房 15 ≥ 目标 12（逐格 0 轮）
+[Act4] 地图校正: 目标精英(名单)=12 | 地图战斗房=14 | 富余战斗位→火堆=2 | 最终：战斗房=12
+[Act4] 精英落位: 12 个战斗房 ← 名单 12 个 | 由下往上 = BYGONE_EFFIGY_ELITE → … → SOUL_NEXUS_ELITE
+[Act4] 战斗房 (3,5) → 指定精英 'PHROG_PARASITE_ELITE'
+[背景折返] 'PHROG_PARASITE_ELITE'：parentAct Act4Model → 'Overgrowth'（自带背景=False…）
+[Act4] 本场来源 = 'PHROG_PARASITE_ELITE' → act 层 1 / 'Overgrowth'（旅行色 28231D / 招牌色相 38°）
+[Stripe] 地图纹路 → 层 1，色相 38°（重挂 3 张底图）
+```
+
+⇒ From the log alone you can answer: who was chosen for this fight, why, why that background / colour, and
+whether the map was recoloured as intended.
+
+### Cases where the logs saved the day
+
+1. **"Background lags one fight"** — the log showed the asset call happening *before* the source act was
+   written ⇒ the real cause was "two call sites for background assets, the preload runs earlier", not a logic
+   error.
+2. **Self-recursion crash** — 9.3 MB of log with 42,629 repeated lines ⇒ located in 30 seconds as "an
+   aggregator act picked itself as the source act".
+3. **"One boss and straight to the Architect"** — scanning the whole assembly for the single caller of
+   `SetLocalPlayerReady` plus a numeric mismatch in the log (room-type rewrite 96 times vs ending-gate
+   interception 3 times) ⇒ located the "roster drift".
+4. **"Myth rest sites disappeared"** — two log lines disagreed (`[Act5LinearMap]` vs `[Act5]`) ⇒ suspicion went
+   straight to ordering (map built before the roster was finalised).
+5. **"Modded act variant has no double boss"** — `[DoubleBoss]` prints the detected layer of every act ⇒
+   instantly visible that the modded act was not detected at all, pointing at a hardcoded type table.
+
+---
+
+## 🛠️ Engineering highlights
+
+- **Robust patching**: ~48 Harmony patch points, all isolated per class, plus a target-existence check script.
+- **Determinism first**: stable hashing for double-boss picks; the roster only depends on synced data
+  (seed + record) so both ends compute the same result — no new random source.
+- **Compatibility first**: layer and ownership decisions are all data-driven, and we shift acts instead of
+  fighting over them; with third-party background hooks we cooperate rather than override.
+- **Verifiable first**: every feature has a log tag, so users can verify it themselves.
+- **Zero asset dependency**: all visuals are procedurally generated.
+- **Own toolchain**: even the `.pck` packer is ours — no Godot editor required.
+
+---
+
+## ⚠️ Differences from upstream: removed / replaced in this branch
+
+> These were trimmed or replaced **after talking to the original author** (to avoid maintaining two parallel
+> implementations). The code has been deleted — only Godot `.uid` leftovers remain. They are **not** current
+> features; please do not read this as missing functionality.
+
+| Item | Handling |
+|---|---|
+| Map length / room density | Removed (`MapLengthPatch`, `MapDensityScalingPatch`, `SkipPruningForLongMapsPatch`) |
+| Enemy removal list | Removed (`RemovalListPopup`) |
+| Difficulty presets | Removed; only the X/Y factors and per-act switches remain |
+| Desync diagnostic patch | Removed (`DesyncDiagnosticPatch`) |
+| Act-5 early implementation | **Replaced** by this branch's `Act5/*` (custom node + straight-line map + two modes) |
+| `AvoidAdjacentEncounterDuplicate` / `EncounterDeduplicator` | Legacy leftovers (the new "fixed roster + coordinate placement" cannot repeat anyway); to be cleaned up next |
+
+---
+
+## 📦 Installation
+
+### Requirements
+
+- Slay the Spire 2 **public beta v0.111.0**
+- [BaseLib](https://github.com/Alchyr/BaseLib-StS2) **3.4.7** (required, must match the game version)
 
 ### Steps
 
-1. Extract the `NotEnoughDifficulty/` folder into `<game root>/mods/`, ensuring it contains:
-    - `NotEnoughDifficulty.dll`
-    - `NotEnoughDifficulty.pck`
-    - `NotEnoughDifficulty.json`
-2. Install BaseLib **v3.3.0** the same way.
-3. Launch the game, Main Menu → Settings → Mods, and enable NotEnoughDifficulty and BaseLib.
+1. Get `NotEnoughDifficulty.dll` / `.pdb` / `.pck` / `.json`;
+2. Copy them together into `<game>\mods\NotEnoughDifficulty\`;
+3. Start the game and enable the mod in the mod list.
 
-Confirm a successful load in the log (the version is read from the manifest at runtime to avoid drift between code and
-json):
-
-```
-[INFO] [NotEnoughDifficulty] Loading NotEnoughDifficulty 1.0.1
-```
+Logs: `%APPDATA%\SlayTheSpire2\logs\godot.log`.
 
 ---
 
-## Configuration
+## 🔧 Building (offline, self-contained)
 
-Main Menu → Settings → Mods → **NotEnoughDifficulty** → Configure. Settings are grouped into sections:
-
-| Section                                                                 | Description                                                                                          |
-|-------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|
-| `General`                                                               | Master toggle (enable/disable the whole difficulty suite)                                            |
-| `Presets`                                                               | Easy / Hard / Extreme one-click preset buttons                                                       |
-| `Act4Act5Scaling`                                                       | Collapse toggle controlling whether the Act 4/5 detail rows are shown, to avoid information overload |
-| `Act4_OverallMultipliers` / `Act5_OverallMultipliers`                   | Per-act overall HP / damage multipliers                                                              |
-| `Act4_NormalEnemyMultipliers` / `Act5_NormalEnemyMultipliers`           | Regular-enemy HP/damage (linear start→end over act progress)                                         |
-| `Act4_BossMultipliers` / `Act5_FinalBossMultipliers`                    | Boss / final-boss HP/damage multipliers                                                              |
-| `Act4_NormalEnemySrcMultipliers` / `Act4_BossSrcMultipliers`, etc.      | Per-origin-act multipliers (normal / boss, one set each for acts 4/5)                                |
-| `Act4_EncWeights` / `Act4_EventWeights` / `Act4_BossWeights` / `Act5_*` | Mixing weights from acts 1–3 for each pool                                                           |
-| `MapLength`                                                             | Map-length master toggle + per-act row sliders                                                       |
-| `RemovalList`                                                           | Enemy removal list entry ("Manage" button opens the popup)                                           |
-| `Speed`                                                                 | Extra speed multiplier (synced with the two injected rows in the game settings screen)               |
-| `BehaviorToggles`                                                       | Behavior toggles like act5 boss warning, final-boss dedupe                                           |
-| `Experimental`                                                          | Experimental options                                                                                 |
-
-> **When a pool weight is set to 0**: normalization falls back to defaults (`Act1=0.25, Act2=0.35, Act3=0.40`) to avoid
-> division by zero.
-
----
-
-## Multiplayer
-
-### Important: all players must run the exact same mod version
-
-The base game validates the peers' mod lists by concatenating `<mod_id>-<version>`; any character mismatch (including a
-`v` prefix or dot placement) is treated as a ModMismatch and rejected.
-
-**Safest approach**: the host packages the entire mod folder and sends it to everyone, who **completely replace** their
-local `NotEnoughDifficulty/` directory (along with the same BaseLib version).
-
-### Config sync flow
-
-```
-host clicks ready to start the run
-  ↓ host broadcasts all config to clients
-  ↓ ≤ 3s
-all clients receive → apply to local static fields → ack
-  ↓ host collects all acks → original begin-run flow → into combat
-  ↓ otherwise
-  popup "Mod version incompatible, ask these players to upgrade", run does not start
+```powershell
+# 1) Dependencies (not shipped with this repo)
+#    <repo>\_refs\game\       <- sts2.dll / 0Harmony.dll / GodotSharp.dll / MonoMod.*.dll / sts2.*.json
+#                                from the game's data_sts2_windows_x86_64 folder
+#    <repo>\_refs\baselib\    <- BaseLib.dll
+#    <repo>\_refs\nuget-feed\ <- the four Godot 4.5.1 nupkgs
+# 2) Compile
+dotnet build --no-incremental          # output -> .\dist\
+# 3) Pack the .pck (localization etc.; no Godot needed)
+dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDifficulty .\NotEnoughDifficulty (Get-ChildItem .\NotEnoughDifficulty\localization -Recurse -Filter *.json | % FullName)
 ```
 
-Sync happens during the lobby phase and is invisible to players (unless an error popup appears). After the run, clients
-reload their own config from disk, leaving local settings untouched.
-
-### Troubleshooting
-
-| Symptom                                                   | Likely cause                                                                                      |
-|-----------------------------------------------------------|---------------------------------------------------------------------------------------------------|
-| Kicked with "Mod Mismatch" on joining the lobby           | Manifests differ between players (different version string / an extra or missing mod)             |
-| Host popup "Mod version incompatible" + run doesn't start | A client isn't installed correctly or is too old; sync got no ack                                 |
-| "State divergence, disconnected" during combat            | Host/client results diverge — usually a client without the mod enabled or sync didn't take effect |
-
-If you hit a sync-failure popup, have the client reinstall the latest mod folder and restart the game.
+> See [`README-移植与构建.md`](README-移植与构建.md) for the differences from the upstream build.
 
 ---
 
-## Project Structure (after the migration/refactor)
+## ⚙️ Configuration overview
 
-All code lives under `NotEnoughDifficultyCode/`, organized by feature:
-
-| Directory            | Responsibility                                                                                                                                                                             |
-|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `Core/`              | Entry point `MainFile`, per-class isolated patching, the `PatchScope` master switch, run-state access                                                                                      |
-| `Config/`            | `NotEnoughDifficultyConfig` (split into partials per section) + the `ExtraActsConfig` logic layer                                                                                          |
-| `ExtraActs/`         | Acts 4/5: `Bootstrap` (inject the act list), `Models` (Act4/5Model), `Patches` (encounter replacement / dedupe / map nodes), `Pool` (mixing/dedupe utils), `Compat` (compatibility guards) |
-| `Difficulty/`        | Runtime HP/damage multiplier application, desync diagnostics                                                                                                                               |
-| `MapLength/`         | Map-length patches, density scaling, skip path-pruning for long maps                                                                                                                       |
-| `RemovalList/`       | Enemy removal list popup UI                                                                                                                                                                |
-| `SpeedControl/`      | Extra speed multiplier control                                                                                                                                                             |
-| `SettingsInjection/` | Injects the two speed rows into the game's settings screen (synced with config)                                                                                                            |
-| `MultiplayerSync/`   | Ack-based config sync, deterministic model hashing                                                                                                                                         |
-| `Act5/`              | Act-5 mid-boss flow/reward/dedupe patches                                                                                                                                                  |
-| `SaveCompat/`        | `COMPAT-PRELAUNCH` inventory of legacy save-compat code (documentation directory)                                                                                                          |
+| Section | Content |
+|---|---|
+| General | Master switch, debug logging |
+| Difficulty | Global HP / damage factor X/Y |
+| ExtraScalingPerAct | Per-act extra scaling (on by default for acts 4/5) |
+| ActComposition | Per-act double boss, hearth / shop between bosses, act-5 mode |
+| Act4_EncWeights / EventWeights / BossWeights | Act-4 pool weight mixing |
+| Act5Map | Whether act 5 uses the custom straight-line map |
+| Compat | Auto-shift when act 4 is taken; force source-act background over self-backed enemies |
+| BehaviorToggles / Speed | Behaviour switches, extra speed |
 
 ---
 
-## Known Issues
+## ⚠️ Known limitations
 
-- **Load crash in multi-mod setups**: some mods drop room data while handling this mod's extra acts on the
-  `FromSerializable` chain, causing an `ArgumentNullException` on load. This mod adds a defensive guard to avoid a hard
-  crash, but if the affected act is the current one there may be follow-up issues — please report the logs (see what
-  `ExtraActs/Compat/RoomSetLoadNullGuardPatch.cs` prints).
-- **Loading an under-populated multiplayer save may hang on a black screen**: e.g. loading a 3-player save with only 2
-  players online can deadlock the base game's `CombatStateSynchronizer`. Workaround: wait for all original players, or
-  start a new run.
-- **Different mod versions are incompatible**: after upgrading, teammates must upgrade in sync; there is no
-  protocol-level backward compatibility.
-
----
-
-## Version History
-
-| Version | Highlights                                                                                                                                                                                                                                                                                                         |
-|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1.0.1   | Guard against a divide-by-zero crash on loading into the first Act 5 combat (RoomSet.NextNormalEncounter): deterministically rebuild normal/elite/event/boss from act pools when a mod act's save data is lost; defensive hardening across patches for coexistence with other mods that patch the same game source |
-| 1.0.0   | First official Steam Workshop release; fixed ConfigSync not syncing string fields (removal list); added workshop publish flow (csproj publishes to ModUploader content)                                                                                                                                            |
-| 0.7.0   | Migrated to the latest game build + BaseLib v3.3.0 (registration-based localization); added difficulty presets, map length/density control, enemy removal list (with layer suffixes and a scope toggle), extra speed mode, save-load robustness; directory & config refactor                                       |
-| 0.4–0.6 | Difficulty system expansion (overall/source multipliers, per-act detail), collapsible config UI, various compatibility fixes (incremental)                                                                                                                                                                         |
-| 0.3.0   | Ack-based config sync also on the LoadRunLobby path; version read from the manifest at runtime                                                                                                                                                                                                                     |
-| 0.2.0   | ConfigSync switched to ack-based; host refuses to start the run + popup when a client doesn't respond                                                                                                                                                                                                              |
-| 0.1.0   | Initial release: basic Act 4/5 + config broadcast (fire-and-forget)                                                                                                                                                                                                                                                |
-
-> 0.4–0.6 were incremental; no precise per-version changelog was kept, so the table summarizes that range.
+- This branch builds against a local `_refs\` folder and an offline NuGet feed; merging upstream may require
+  switching the reference style back.
+- Some fixes only apply to **newly generated maps** (an act already generated in an old save is not repaired,
+  e.g. act-5 rest-site counts).
+- This English README is a translation of the branch README; the upstream English README is older.
+- Multiplayer has **no protocol-level backward compatibility** — everyone must upgrade together.
+- With extreme mod combinations another mod may still lose data in the save/load chain (this mod adds
+  defensive guards so it does not hard-crash).
 
 ---
 
-## Feedback / Contributing
+## 📝 Version history
 
-Report bugs and suggest features at [GitHub Issues](https://github.com/bwnotfound/StS2-NotEnoughDifficulty/issues). When
-reporting a bug, please include:
-
-- the mod version (first log line)
-- reproduction steps
-- the full host `godot.log` (and the client's if possible)
+| Version / commit | Changes |
+|---|---|
+| `beta-0.111-port` | Ported to beta v0.111.0 + BaseLib 3.4.7; **act 4 rebuilt** as a fixed roster with coordinate placement; **act 5 rebuilt** (custom node class, straight-line map, Legend/Myth modes, rest sites = fights − 1, only the final boss ends the act); **combat background follows the enemy's own act** (by rewriting `parentAct`, third-party friendly); **map veins recoloured per source act** (hue taken from the act's own art); **multi-mod coexistence** (data-driven layer detection, auto-shift to acts 5/6 when act 4 is taken, double bosses for modded act variants); plus 11 classes of in-game issues found and fixed during the port |
 
 ---
 
-## Credits
+## 🙏 Credits
 
-- [Alchyr](https://github.com/Alchyr)'s [BaseLib](https://github.com/Alchyr/BaseLib-StS2)
-  and [ModTemplate-StS2](https://github.com/Alchyr/ModTemplate-StS2)
-- [GlitchedReme](https://github.com/GlitchedReme)'
-  s [Chinese StS2 modding tutorials](https://github.com/GlitchedReme/SlayTheSpire2ModdingTutorials)
+**The original**
+
+- **[bwnotfound](https://github.com/bwnotfound)** — the **design and the entire original implementation** of
+  this mod. This branch is a beta port **commissioned by him**; **the copyright is his**, and releases /
+  distribution should go through the upstream repository.
+
+**Extension layer & tools**
+
+- [Alchyr](https://github.com/Alchyr) for [BaseLib](https://github.com/Alchyr/BaseLib-StS2) and
+  [ModTemplate-StS2](https://github.com/Alchyr/ModTemplate-StS2)
+- [Harmony](https://github.com/pardeike/Harmony)
+- [GlitchedReme](https://github.com/GlitchedReme) for the Chinese StS2 modding tutorials
+- The author of the workshop mod **Boss Gauntlet** — the synthetic map-node technique comes from it
+
+**Interoperability (new in this branch)**
+
+- **ritzukage** for **ActsFromThePast** and **RitsuLib** — their acts / elites / bosses are drawn into this
+  mod's acts 4 and 5, and their hand-drawn background is why we switched to "rewrite `parentAct` and let
+  **their own hooks** run"
+- **YUI Spire / Card Expansion**, **Act 4 Heart** and friends — used to validate whole-act mod coexistence
+  (this mod shifts to acts 5/6 when act 4 is occupied)
+- **Skin / card-art / localization mods** — used to validate that localization and settings injection do not
+  clash
+
+**This branch**
+
+- [@Coll-ed](https://github.com/Coll-ed) — the beta v0.111.0 port, the act 4/5 rebuilds, the multi-mod
+  compatibility work, all the debugging and the documentation. **No third-party assets were added**; all
+  visuals are procedurally generated.
