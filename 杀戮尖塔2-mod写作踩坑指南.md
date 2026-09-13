@@ -1,4 +1,4 @@
-﻿# 杀戮尖塔 2 Mod 写作踩坑指南
+# 杀戮尖塔 2 Mod 写作踩坑指南
 > **合规口径**：本文档面向 mod 开发 —— 文中所有"读程序集 / 看 IL"的操作，都是在**本机已安装的程序集**上做**只读分析**，
 > 用于确认公开 API 与运行时行为；不涉及修改、破解或再分发游戏与第三方代码 / 资源。请同时遵守游戏与社区规则。
 
@@ -1497,3 +1497,231 @@ protected override ActMap? CustomCreateMap(RunState runState, bool replaceTreasu
    复杂度高得多）；`if (!HasPlan) Build()` 这种幂等入口可以让多个时机都安全调用；
 3. 顺序类 bug 的排查口诀：**去找"两处本该一致的数字"**（本次是"链位 1"对"伪装BOSS 10"）。
    看到数字对不上，先怀疑顺序，而不是先怀疑算法。
+
+### 3.22 ⚠️ 想"接管"一个方法之前，先看它里面还包着多少**演出**（"火堆没有进房转场了"）
+
+**症状**：双 BOSS 之间插入的合成火堆已经能点了，但点下去**没有原版的进房转场**
+（画圈 + 渐黑），直接黑一下就进了房；而原版房间（普通怪物/精英）转场正常。
+
+**取证**：去读被我们挂 patch 的那个方法本体 —— 原版 `NMapScreen.TravelToMapCoord`：
+```csharp
+IsTraveling = true;  RecalculateTravelability();
+_marker.HideMapPoint();  IsTravelEnabled = false;
+await new MapSplitVoteAnimation(this, _runState, _mapPointDictionary).TryPlay(coord);  // ← 画圈
+var node = _mapPointDictionary[coord];
+node.OnSelected();  SfxCmd.Play("event:/sfx/ui/map/map_select");
+node.AddChildSafely(NMapNodeSelectVfx.Create(scale));                                   // ← 选中特效
+SfxCmd.Play("event:/sfx/ui/wipe_map");
+var fadeOutTask = TaskHelper.RunSafely(RunManager.Instance.FadeOut());                  // ← 渐黑
+foreach (var tick in _paths[(lastVisited, coord)]) { ... 逐点点亮 ... }                  // ← 走线动画
+_marker.SetMapPoint(node);  await fadeOutTask;
+await RunManager.Instance.EnterMapCoord(coord);                                         // ← 真进房
+TaskHelper.RunSafely(RunManager.Instance.FadeIn());
+```
+我们当初为了"让合成节点进得去房"，在 `TravelToMapCoord` 的 prefix 里 **`return false` + 自己调
+`EnterMapPointInternal`** —— 等于把上面**每一行演出**都删掉了。转场不是"另一个系统"，
+它就是这个方法本体。
+
+**修法**：把"拦截点"从 `TravelToMapCoord` 挪到**更靠里、且确实必须改写**的那一步。
+原版 `RunManager.EnterMapCoord` 的实现是：
+```csharp
+MapPoint point = State.Map.GetPoint(coord);                       // ← 网格外坐标解析不出来（null）
+return EnterMapPointInternal(coord.row + 1, point.PointType, ...);
+```
+合成坐标是**网格外**的（虚拟行 = boss 行 + 50），`GetPoint` 必然拿不到 ⇒ 这一步**必须**接管；
+而它上游的 `TravelToMapCoord` **必须放行**。于是变成：
+```csharp
+[HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.TravelToMapCoord))]
+[HarmonyPrefix]
+public static bool Prefix(MapCoord coord)
+{
+    // 只留一行证据日志，然后一律放行：演出全在原版实现里
+    return true;
+}
+```
+
+**方法论**：
+1. **接管前先通读被接管的方法**：凡是名字里带 `Travel` / `Enter` / `Play` / `Animate` 的方法，
+   大概率"逻辑 + 演出"混在一起，整个 `return false` 就是连演出一起删；
+2. 拦截点要选**离"必须改的那一行"最近**的位置 —— 越靠外，删掉的原版行为越多。
+   本次的正确分层是：**外层的演出放行 / 内层解析不了坐标的那一步接管**；
+3. 回归自检口诀：改完一个 `return false`，问自己"**这个方法里除了我要跳过的逻辑，
+   还有哪些副作用（信号、音效、动画、存档、UI 刷新）会一起没掉？**"
+   —— 本次漏掉的是 `FadeOut/FadeIn`、`_marker`、`VisitedMapCoords`、`RefreshAllPointVisuals`。
+
+---
+
+## 第 13 章　皮肤 Mod：三条路线、动画契约与资源覆盖
+
+> 本章全部结论来自**反编译 + 实测对照**：`CharacterSkinManager.dll`（奥卡皮肤用的运行时换装器，
+> 45 KB / 37 个类型）、创意工坊 `RedMist`（资源覆盖式皮肤）、以及原版 `SlayTheSpire2.pck`（2 GB）。
+
+### 13.1 三条路线（先选路线，再写代码）
+
+| 路线 | 做法 | 优点 | 代价 |
+|---|---|---|---|
+| **A. 资源覆盖式**（RedMist） | 出一个完整 Godot mod pck，**按原版路径**覆盖 `animations/characters/ironclad/*`、`animations/character_select/…`、`images/…` | 0 运行时风险、不依赖任何游戏 API、不怕版本更新 | ① **同路径撞车**：谁后挂载谁通吃（见 13.2）；② 骨架必须**自带全部动画名**；③ 不能在游戏里切换皮肤 |
+| **B. 运行时换装式**（CharacterSkinManager） | `res://skins/**/skin.json` 描述骨架；DLL 在 `NCreature._Ready` postfix 里 `SetSkeletonDataRes` 换骨架 + 重建动画器 | 可切换、多皮肤共存、不动原版资源 | 依赖游戏内部 API ⇒ 版本一变就崩（见 13.5 的 NRE 案例） |
+| **C. 改原版模组** | 直接改别人的皮肤包 | 表面最省事 | 没法维护、发布要带别人的资源；**除非你就是作者/维护者** |
+
+**选型建议**：只做一套外观（"把铁甲战士换成 XX"）→ 走 A；
+要做"同一角色多套皮肤、游戏内切换"→ 走 B，并且**必须**自己实现动画名兜底（13.6）。
+
+### 13.2 资源覆盖式（A）：pck 里到底要放什么
+
+RedMist 的 pck（50 个条目）结构就是标准答案 —— 注意它**根本没有"换装逻辑"**，
+只是把原版路径换个内容：
+
+```
+animations/characters/ironclad/ironclad.skel.import      ← 指向 .godot/imported/ironclad.skel-<hash>.spskel
+animations/characters/ironclad/ironclad.atlas.import
+animations/characters/ironclad/ironclad.png.import
+animations/characters/ironclad/ironclad_skel_data.tres.remap
+animations/character_select/ironclad/…        （选人界面）
+animations/merchant/ironclad/…                （商店）
+animations/rest_site/ironclad/…               （篝火）
+images/packed/character_select/… , images/ui/top_panel/… , images/ui/hands/…   （卡图/图标/联机手势）
+.godot/imported/*.spskel / *.spatlas / *.ctex （真正的资源二进制）
+.godot/exported/…/*.res                       （_skel_data.tres 的导出体）
+```
+其 DLL 只有 **5 KB**，反编译出来只有一个 `GodotPlugins.Game.Main`：
+```csharp
+[UnmanagedCallersOnly(EntryPoint = "godotsharp_game_main_init")]
+private static godot_bool InitializeFromGameProject(...)   // Godot 自举桩，零 patch
+```
+
+**⚠️ 路径撞车（实测三家同路径）**：`.godot/imported/<源文件名>-<hash>.<ext>` 里的 **hash 只跟源路径有关，跟内容无关**。
+所以只要两个模组都覆盖 `res://animations/characters/ironclad/ironclad.skel`，
+它们就会产出**同名文件**：
+
+| 提供者 | `ironclad.skel-8e96930d….spskel` 大小 |
+|---|---|
+| 原版 `SlayTheSpire2.pck` | 173,712 B |
+| 创意工坊 `RedMist` | 75,474 B |
+| `奥卡皮肤-Orca` 板甲皮肤 | 482,767 B |
+
+→ 谁先挂载谁被后者覆盖，**外观随机变成另一个模组的模型**（而且不报错）。
+做 A 路线时：① 尽量用**独占路径**（如 `animations/Orcaweddingdress/characters/ironclad/…`，
+奥卡婚纱就是这么做的，所以它不会和原版/RedMist 撞）；② 或者明确声明与某些模组互斥。
+
+### 13.3 运行时换装式（B）：`skin.json` 的完整 schema
+
+`CharacterSkinManager` 扫 `res://skins/**/skin.json`（递归、大小写不敏感），字段如下（反编译所得）：
+
+```jsonc
+{
+  "character_id": "IRONCLAD",          // 必填：角色 Id.Entry
+  "skin_id": "Orca-weddingdress",      // 必填：皮肤唯一 id
+  "display_name": "婚纱",              // 必填：面板显示名
+  "battle": {                          // 必填：skeleton_data_path 或 skel+atlas 二选一
+    "skeleton_data_path": "res://…/ironclad_skel_data.tres",
+    "idle": "idle_loop", "attack": "attack", "cast": "cast",
+    "hurt": "hurt", "die": "die", "relaxed": "relaxed_loop"
+  },
+  "merchant":     { "skeleton_data_path": "…", "animation": "relaxed_loop" },
+  "rest":         { "skeleton_data_path": "…", "act0": "…", "act1": "…", "act2": "…" },
+  "charselect":   { "skeleton_data_path": "…", "animation": "animation" },
+  "preview": {                          // 可选，缺省见括号
+    "use_battle_skeleton": true, "animation": "idle_loop",
+    "scale_x": 0.25, "scale_y": 0.25, "position_x": 120, "position_y": 150
+  }
+}
+```
+- `skeleton_data_path` 缺省时用 `skel` + `atlas` 两个路径，管理器会在
+  `user://character_skin_manager/generated/<skin>/<scene>/` **自己生成 `.tres`**；
+- 四个场景（battle / merchant / rest / charselect）**都必须能解析出骨架**，否则整个 skin.json 被丢弃；
+- `LoadResourceWithFallback` 只会修一种错路径：`/animations/merchant/` → `/merchant/`
+  （奥卡婚纱的 merchant 路径多写了一层 `animations/`，正是被它救回来的）。
+
+**⚠️ `battle.idle/attack/cast/hurt/die/relaxed` 是死配置**：v0.0.3 的 DLL 里这些字段
+**只被赋值、从不被读取**（`CharacterSkinRuntime.CreateBattleAnimator` 直接
+`return model.GenerateAnimator(spine)`，用的是**原版角色的状态机**）。
+别指望改 JSON 能让动画对上 —— 动画名契约在骨架里（13.4）。
+
+### 13.4 ⚠️ 动画名契约：骨架必须自带这些名字
+
+原版 `CharacterModel.GenerateAnimator(MegaSprite, Creature)` 建的状态（铁甲战士实测）：
+
+| 名字 | 何时请求 | 备注 |
+|---|---|---|
+| `idle_loop` | 常驻待机（初始状态） | `AnimState.idleAnim` |
+| `low_health_loop` | **HP ≤ 25%** 时 | `IsLowHealth => creature.GetHpPercentRemaining() <= 0.25` |
+| `relaxed_loop` | `Relaxed` 触发器（商店/篝火等） | |
+| `die` | `Dead` 触发 | |
+| `attack` / `cast` / `hurt` | `Attack` / `Cast` / `PowerUp` / `Hit` 触发 | `CharacterModel.AnimationStates` |
+| `attack_heavy` 等 | 角色模型自己追加的状态 | 铁甲战士有 |
+
+而 `CreatureAnimator` 找动画的逻辑是**只警告、不切换**：
+```csharp
+if (!_spineController.HasAnimation(_currentState.Id)) {
+    Log.Warn($"could not find '{_currentState.Id}' animation on '{value}'");
+    return;                       // ← 不改状态、不播动画：上一段动画早已播完 ⇒ 角色定格
+}
+```
+**实测对照**（裸 ASCII 子串搜索，判"在不在"）：
+
+| 名字 | 原版 | RedMist | 奥卡板甲 | 奥卡婚纱 |
+|---|---|---|---|---|
+| `idle_loop` / `attack` / `cast` / `hurt` / `relaxed_loop` | 有 | 有 | 有 | 有 |
+| `low_health_loop` | 有 | **无** | **无** | **无** |
+| `attack_heavy` | 有 | **无** | **无** | **无** |
+
+结论：**除了原版，谁都缺这两档** ⇒ 低血/重击定格是所有换皮 mod 的通病（做 A 路线的也不例外）。
+
+### 13.5 三个真实故障（含取证方法）
+
+**故障 A：开局卡在攻击动作（皮肤一换，动画状态机根本没建起来）**
+```
+[WARN] could not find 'low_health_loop' animation on 'Visuals'
+ERROR: System.NullReferenceException
+   at CharacterModel.<>c.<get_IsLowHealth>b__157_0(Creature creature)     ← creature 是 null
+   at CharacterModel.GenerateAnimator_Patch2(this, controller, creature)  ← 新版：双参
+   at <CrossVersionCompat>GeneratedShims.Shim_GenerateAnimator_0(self, spine)  ← CC 按旧版单参转发
+   at CharacterSkinManager.CharacterSkinRuntime.CreateBattleAnimator(...)
+```
+新版签名是 `GenerateAnimator(MegaSprite controller, Creature creature)`；管理器是按 0.108 的
+**单参**重载编译的，调用落到 CrossVersionCompat 生成的 shim，转发时 `creature` 传 null ⇒
+`IsLowHealth` 里 `creature.GetHpPercentRemaining()` 空引用 ⇒ 异常抛出 ⇒ **动画器没被赋值** ⇒
+角色停在骨架的**第 0 个动画**（这个皮肤里正好是 `attack`），打一张攻击牌后其它代码路径
+重新驱动动画才恢复 —— 用户描述"开局卡攻击动作，攻击后正常"，机制完全吻合。
+
+**故障 B：残血静止不动** —— 13.4 的名字缺失 + "只警告不切换"。
+
+**故障 C：外观串台** —— 13.2 的路径撞车。
+
+**取证工具链**（本项目已沉淀，见第 10 章）：
+| 目的 | 工具 |
+|---|---|
+| 看 pck 里有什么、导出单个资源 | `_tools\PckTool`（**Godot 4.4+ 是 PCK v3**：文件表在**包尾**，头里有 `dir_offset`；v1/v2 的解析器会读到"条目 0"） |
+| DLL → 可读 C# | `_tools\Decomp`（ILSpy 引擎；大程序集务必 `--list` 先找类型名，再 `--filter=` 只反编译命中类型） |
+| 判断骨架里有没有某个动画名 | 裸 ASCII 子串搜索（`[System.Text.Encoding]::ASCII.GetString(bytes).Contains("low_health_loop")`）。**别用正则扫"像单词的串"**：二进制里全是噪声，会把 `xxxcast` 这种也当命中 |
+| 故障现场 | `%APPDATA%\SlayTheSpire2\logs\godot.log` 里的 `could not find '<名>' animation` 与模组栈回溯 |
+
+### 13.6 修复范式：动画名兜底（本次交付 `CharacterSkinAnimFix`）
+
+三段式，全部"按名字推导"，不写死任何皮肤：
+
+1. **补 creature 重建动画器**（前缀 + `return false`）：从 `MegaSprite` 节点沿父链找 `NCreature`，
+   拿 `creature` 后调**新版双参** `GenerateAnimator(spine, creature)`；找不到就返回 null
+   （保持"没有动画器"，但**不再抛异常**）；
+2. **动画名兜底**：在 `CreatureAnimator.SetNextState` / `AddNextState` 的 prefix 里，
+   若 `state.Id` 在骨架的 `GetAnimationNames()` 里不存在，就换成等价动画
+   （`low_health_loop → idle_loop`、`attack_heavy → attack`、`*_loop/*_start/*_end` 去掉后缀…，
+   最后退回 `idle_loop`）；
+3. **⚠️ 必须"原地改写 `AnimState.Id`"，不能另造一个 AnimState**：状态的转移关系
+   （`_nextStates` / `_triggerBranchedStates`，"攻击完回待机"）都挂在**原对象**上，
+   换对象就丢了 —— 那正是"攻击动作卡住"的成因。`Id` 是只读自动属性，用反射写它的
+   `<Id>k__BackingField`。
+
+**⚠️ 模组加载顺序**：本模组可能排在 `CharacterSkinManager` **之前**初始化，那时它的程序集还没载入，
+`AccessTools.TypeByName("CharacterSkinManager.CharacterSkinRuntime")` 返回 null。
+做法：挂钩失败先记为"挂起"，在动画请求时**每秒重试一次**，命中后再挂上。
+
+### 13.7 皮肤 mod 检查清单
+
+1. 先定路线（13.1）；A 路线优先**独占路径**，B 路线必做动画名兜底；
+2. 骨架里逐个确认：`idle_loop`、`low_health_loop`、`relaxed_loop`、`attack`、`cast`、`hurt`、`die`
+   （以及该角色自己追加的，如 `attack_heavy`）——**缺一个就会在那个状态下定格**；
+3. `.import` 的 `dest_files` 与 pck 里实际打的 `.godot/imported/*.spskel` 必须一致；
+4. 装好后**盯着 `godot.log` 搜 `could not find`**：一条都不能有；
+5. 换装类 mod 额外验：开局（idle）、攻击、受击、**低血（≤25%）**、死亡、商店、篝火、选人界面。
