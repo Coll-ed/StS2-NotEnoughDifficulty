@@ -8,11 +8,12 @@ using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
-/// ## 参考实现声明（如实标注）
-/// 本文件的**节点注入流程**（虚拟坐标 + 原版节点工厂 + 删直连 + 重串链 + 重画路径 + 重算可通行）
-/// 参考了创意工坊模组 **Boss Gauntlet**（v0.1.3，双 boss 之间插火堆/商店的那套做法），
-/// 本模组早期版本曾按其结构做过 1:1 对齐，后续逐步改写。
-/// **若原作者认为不妥，我们会在收到通知后立即改写为独立实现或移除该功能。**
+/// ## 参考实现声明
+/// 由于技术不成熟，双 BOSS 的实现与火堆添加**参考了他的模组（创意工坊 Boss Gauntlet v0.1.3）**，
+/// 采用类似的方法实现了功能。
+///
+/// 如果作者对此感到不满，请立刻联系 @Coll-ed（https://github.com/Coll-ed），
+/// 我会立刻将其删除并采用节点注入的方式来替换功能。
 
 namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 
