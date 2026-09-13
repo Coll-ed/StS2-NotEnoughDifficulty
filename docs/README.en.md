@@ -311,7 +311,7 @@ Two deliberate decisions about music (otherwise bosses drawn from other acts wou
    captured **9.3 MB / 68,000 lines**, of which **42,629 lines** were the same three lines repeating in a
    self-recursion crash).
 
-### Log tag reference (excerpt)
+### Log tag reference
 
 | Tag | Answers | Example |
 |---|---|---|
@@ -332,9 +332,24 @@ Two deliberate decisions about music (otherwise bosses drawn from other acts wou
 | `[Gauntlet]` / `[SynthHearth]` | Synthetic node injection | `[Gauntlet] 注入结果 = True` |
 | `[MapGuard]` | Stuck-click interception | `[MapGuard] 忽略对「当前所在坐标」的点击 (3,1) —— 不投票` |
 | `[ModCompat]` | Startup compatibility report | `[ModCompat] 关键 patch 点上的其它 mod：…` |
-| `[PatchScope]` | Patch isolation | `Patch class X failed (skipped)` |
+| `[Act4] 地图染色` | Why the map veins are tinted this way | `[Act4] 地图染色 ← 'X' 属于 Underdocks（层 1）色相 258°` |
+| `[Act4] 地图校正` | Final ledger of depth / combat rooms / rest sites | `[Act4] 地图校正: 目标精英(名单)=12 \| 地图战斗房=14 \| 富余战斗位→火堆=2 \| 最终：战斗房=12` |
+| `[Act4Probe]` | Seed-predictor state | `[Act4Probe] 房间数覆盖 patch 已装载（只装一次）` |
+| `[Act5Mid] 布局形态 / 定位参照` | Chain layout, scaling and margins | `[Act5Mid] 布局形态=蛇形（4 栏/行 × 3 行）… \| 行距=567px 缩放=1.00 顶部留白=383px` |
+| `[Act5Mid] 注入完成` | Cell contents and icon source | `[Act5Mid] 注入完成: 链位 19 \| (3,1) X [贴图] \| (3,3) Y [spine]` |
+| `[Theme]` | Procedural textures and hue | `[Theme] 'Underdocks' 招牌色相 = 258°` / `BOSS 图标改色（传奇=黑金）` |
+| `[Stripe]` | Map vein recolouring | `[Stripe] 地图纹路 → 层 1，色相 258°（重挂 3 张底图）` |
+| `[N10DoubleBoss]` | Ascension-10 double-boss fix | `[N10DoubleBoss] …：清掉 N 个被误加的第二个 boss（act5 的保留不动）` |
+| `[Gauntlet]` | Synthetic-node hand-over | `[Gauntlet] 建图前检查: act=… HasSecondBoss=…` / `注入结果 = True` |
+| `[SynthHearth]` | Synthetic rest-site injection | `[SynthHearth] act3：N10 已接管双 boss，本 mod 不注入火堆` |
+| `[Blueprint]` | Per-act build-window check | `[Blueprint] 第 N 层已构筑过，跳过` |
+| `[MapPathsFix]` | Duplicate-key repair | `[MapPathsFix] 已清空 NMapScreen._paths（避免 DrawPaths 重复键崩溃）` |
+| `[RunProgress]` | Enemy-ownership resolution | `[RunProgress] 'X' 有 3 个候选 act：Glory(默认) / … ⇒ 取 '…'` |
+| `[BossInventory]` | Boss inventory dump | `[BossInventory] 当前层=… BossEncounter=… SecondBoss=…` |
+| `[Settings]` / `[Slider]` | Settings-screen injection | `Settings injection: slider row 'MO_ExtraSpeedMultiplierRow' inserted at index 6` |
+| `[ConfigSync]` | Multiplayer sync state machine | every step of broadcast / ack / timeout / refusing to start || `[PatchScope]` | Patch isolation | `Patch class X failed (skipped)` |
 
-The full table is in the Chinese README ([`../README.md`](../README.md)).
+Sample lines are kept in the original Chinese (that is what the game actually prints).
 
 ### A complete evidence chain
 
