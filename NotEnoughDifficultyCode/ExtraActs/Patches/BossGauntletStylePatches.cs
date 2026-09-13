@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
@@ -256,45 +256,45 @@ public static class BossGauntletStylePatches
     }
 
     // ============================================================
-    // 6) 进入地图节点：接管 **NMapScreen.TravelToMapCoord**
+    // 6) 点地图节点：**不接管** NMapScreen.TravelToMapCoord
     //
-    // ⚠️ 这里必须挂 TravelToMapCoord，不能挂 RunManager.EnterMapCoord（踩过大坑）：
-    // 崩溃堆栈证明玩家点地图的真实路径是
-    //     NMapScreen.TravelToMapCoord(coord)
-    //       → RunManager.EnterMapCoord(coord)
-    //       → RunManager.EnterMapPointInternal(actFloor, pointType, null, saveGame)
-    //       → CreateRoom(RoomType, MapPointType, model: null)
-    // 挂在 EnterMapCoord 上的钩子对"点地图"不生效 ——
-    // 所以注入的合成节点点不动、合成房间也进不去。
+    // ★ 这里从"接管"改回"放行"，是为了修一个我亲手造成的回归：
+    //   原版进房转场（画圈 + 渐黑）整个都在 TravelToMapCoord 里 ——
+    //     IsTraveling=true → RecalculateTravelability → MapSplitVoteAnimation（画圈）
+    //     → node.OnSelected() + NMapNodeSelectVfx + SfxCmd.Play("wipe_map")
+    //     → RunManager.FadeOut()（渐黑）→ 沿 _paths 逐点点亮 → await EnterMapCoord(coord)
+    //     → FadeIn + RefreshAllPointVisuals
+    //   我之前在这里直接 return false + 自己去调 EnterMapPointInternal，等于把上面**全部**跳过，
+    //   于是玩家看到的就是"点了火堆直接黑一下进房，没有画圈也没有渐黑"（用户实测反馈）。
     //
-    // act5 的伪装 BOSS 节点**不走这里**：它们是原生 PointType.Monster 节点，
-    // 房间里放谁由 Act5EncounterPoolPatch（ActModel.PullNextEncounter）决定。
+    //   转场需要的两样东西我们都齐：
+    //     ① `_mapPointDictionary[coord]` 里有合成节点（InjectVisuals 已登记，且强制成了 Travelable）
+    //     ② `_paths[(上一个已访问坐标, 合成坐标)]` 里有连线（InjectVisuals 里 DrawPaths 已画）
+    //   所以放行即可恢复原版演出。
+    //
+    // ⚠️ 真正必须接管的点在下一节 RunManager.EnterMapCoord —— 原版实现是
+    //      `MapPoint point = State.Map.GetPoint(coord); EnterMapPointInternal(coord.row + 1, point.PointType, ...)`，
+    //    合成坐标在**网格外**，GetPoint 解析不到（null）会直接炸。
     // ============================================================
 
     [HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.TravelToMapCoord))]
     [HarmonyPrefix]
     [HarmonyPriority(Priority.High)]
-    public static bool NMapScreenTravelToMapCoordPrefix(NMapScreen __instance, MapCoord coord, ref Task __result)
+    public static bool NMapScreenTravelToMapCoordPrefix(MapCoord coord)
     {
         if (!PatchScope.IsEnabled) return true;
 
-        Task? takeover = null;
-        var handled = PatchScope.Run(nameof(NMapScreenTravelToMapCoordPrefix), () =>
+        PatchScope.Run(nameof(NMapScreenTravelToMapCoordPrefix), () =>
         {
             var state = RunStateAccessor.GetCurrentState();
-            if (state?.Map == null) return false;
+            if (!SyntheticHearth.IsSyntheticCoord(state, coord)) return;
 
-            var rm = RunManager.Instance;
-            if (rm == null) return false;
+            MainFile.DebugLog(
+                $"[Gauntlet] 合成坐标 ({coord.col},{coord.row}) 走**原版旅行流程**" +
+                "（保留画圈 + 渐黑转场；进房由 EnterMapCoord 接管）");
+        });
 
-            // 合成火堆/商店（act1~4）
-            return SyntheticHearth.TryEnterSyntheticRoom(rm, state, coord, out takeover);
-        }, false);
-
-        if (!handled || takeover == null) return true;
-
-        __result = takeover;
-        return false;
+        return true;   // 一律放行：转场演出全在原版实现里，接管它就等于删掉转场
     }
 
     // ============================================================

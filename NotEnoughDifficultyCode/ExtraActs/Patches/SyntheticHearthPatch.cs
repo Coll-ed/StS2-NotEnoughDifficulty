@@ -74,6 +74,15 @@ internal static class SyntheticHearth
         return -1;
     }
 
+    /// <summary>这个坐标是不是我们插的合成房间（供"放行原版旅行流程"之类的判定用）。</summary>
+    public static bool IsSyntheticCoord(RunState? state, MapCoord coord)
+    {
+        var map = state?.Map;
+        if (map?.SecondBossMapPoint == null) return false;
+        if (_pendingRoomCount <= 0) return false;
+        return GetRoomIndex(map, _pendingRoomCount, coord) >= 0;
+    }
+
     /// <summary>
     ///     往地图上注入合成火堆的**视觉与连通**（在 <c>NMapScreen.SetMap</c> 之后调）。
     ///     返回 false 表示条件不满足或失败（调用方无需处理，原版地图照常可用）。
