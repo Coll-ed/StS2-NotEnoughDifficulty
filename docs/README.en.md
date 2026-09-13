@@ -1,4 +1,4 @@
-﻿# StS2-NotEnoughDifficulty ("Still Not Hard Enough!") · Beta Port Branch
+# StS2-NotEnoughDifficulty ("Still Not Hard Enough!") · Beta Port Branch
 
 English | [中文](../README.md)
 
@@ -491,6 +491,9 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 | Version / commit | Changes |
 |---|---|
 | `beta-0.111-port` | Ported to beta v0.111.0 + BaseLib 3.4.7; **act 4 rebuilt** as a fixed roster with coordinate placement; **act 5 rebuilt** (custom node class, straight-line map, Legend/Myth modes, rest sites = fights − 1, only the final boss ends the act); **combat background follows the enemy's own act** (by rewriting `parentAct`, third-party friendly); **map veins recoloured per source act** (hue taken from the act's own art); **multi-mod coexistence** (data-driven layer detection, auto-shift to acts 5/6 when act 4 is taken, double bosses for modded act variants); plus 11 classes of in-game issues found and fixed during the port |
+| `d914963` | **Fixed: the synthetic rest site between the two bosses was not clickable** — the node lives **off-grid** (virtual row = boss row + 50), and vanilla `RecalculateTravelability` only walks the grid, so it never sees it: the node stayed `Untravelable` and `NMapPoint.OnRelease` rejected the click through `IsTravelable`. Now the node is forced to `Travelable` **while the player stands on the first boss node and the sequence is not finished**, and forced back to `Untravelable` otherwise |
+| `183f3d0` | **Fixed: the room-entry transition (circle sweep + fade to black) for the synthetic rest site and the second boss** — we used to **take over `NMapScreen.TravelToMapCoord` entirely** (`return false` plus our own `EnterMapPointInternal` call), but the whole vanilla transition lives *inside that method* (`MapSplitVoteAnimation` sweep, selection VFX + `wipe_map` sfx, `RunManager.FadeOut`, path dots lighting up one by one, room entry, `FadeIn`), so the transition was removed along with it. We now **let vanilla run** and move the takeover down to `RunManager.EnterMapCoord`, which is the step that genuinely has to be rewritten (`State.Map.GetPoint(coord).PointType` returns null for off-grid coordinates) |
+| `de8d11a` | **Engineering docs**: the pitfalls guide gains §3.22 ("before taking over a method, look at how much *staging* it wraps") and **chapter 13, Character skin mods** (the three approaches compared, pck layout, the full `skin.json` schema, the animation-name contract with a four-skeleton measured comparison, three real failures, the forensics toolchain, the fix pattern and a checklist) |
 
 ---
 

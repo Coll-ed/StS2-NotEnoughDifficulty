@@ -1,4 +1,4 @@
-﻿# StS2-NotEnoughDifficulty（还不够难！）· Beta 移植分支
+# StS2-NotEnoughDifficulty（还不够难！）· Beta 移植分支
 
 [English](docs/README.en.md) | 中文
 
@@ -446,6 +446,9 @@ dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDi
 | 版本 / 提交 | 主要变化 |
 |---|---|
 | `beta-0.111-port` | 移植到 beta v0.111.0 + BaseLib 3.4.7；**第 4 幕重制**为"确定名单 + 坐标落位"；**第 5 幕重制**（自研节点类 / 直线地图 / 传奇·神话双档 / 火堆 = 场数 − 1 / 仅最终 BOSS 收尾）；**战斗背景按来源幕**（改写 `parentAct`，兼容第三方）；**地图纹路按来源幕换色**（美术统计招牌色相）；**多模组共存**（层号数据判定、第 4 幕被占自动顺延 5/6、双 boss 支持模组 Act 变体）；并修掉移植过程中的 11 类实机问题 |
+| `d914963` | **修复：双 boss 之间的合成火堆"点不动"** —— 合成节点建在**网格外**（虚拟行 = boss 行 + 50），原版 `RecalculateTravelability` 只沿网格推导，永远算不到它们，于是节点停在 `Untravelable`、点击被 `NMapPoint.OnRelease` 的 `IsTravelable` 挡掉。改为在"玩家正站在第一个 BOSS 节点、且合成序列还没走完"时**自行把节点置为 `Travelable`**，其余情况明确置回 `Untravelable` |
+| `183f3d0` | **修复：合成火堆 / 第二个 BOSS 的进房转场动画（画圈 + 渐黑）** —— 之前把 `NMapScreen.TravelToMapCoord` **整个接管**（`return false` + 自己调 `EnterMapPointInternal`），而原版转场演出**全长在那个方法里**（`MapSplitVoteAnimation` 画圈 → 选中特效 + `wipe_map` 音效 → `RunManager.FadeOut` 渐黑 → 沿 `_paths` 逐点点亮 → 进房 → `FadeIn`），于是转场被一起删掉。改为**放行原版**，把接管点下移到确实必须改写的 `RunManager.EnterMapCoord`（原版那里是 `State.Map.GetPoint(coord).PointType`，网格外坐标解析为 `null`） |
+| `de8d11a` | **工程文档**：踩坑指南新增 §3.22（"接管一个方法之前，先看它里面还包着多少**演出**"）与 **第 13 章 皮肤 Mod**（资源覆盖 / 运行时换装 / 改原版三条路线对比、pck 结构、`skin.json` 完整 schema、动画名契约与四份骨架实测对照、三个真实故障、取证工具链、修复范式与检查清单） |
 
 ---
 
