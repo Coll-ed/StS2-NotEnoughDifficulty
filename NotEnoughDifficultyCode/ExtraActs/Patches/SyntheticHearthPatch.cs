@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
@@ -273,16 +273,38 @@ internal static class SyntheticHearth
                 .Field("_mapPointDictionary").GetValue<Dictionary<MapCoord, NMapPoint>>();
             if (dict == null) return;
 
+            // ★ 合成节点是**网格外**的点（虚拟行 = boss 行 + 50）⇒ 原版 <c>RecalculateTravelability</c>
+            //   永远算不到它们（它只沿地图网格推导可通行点），于是节点一直是 Untravelable、
+            //   点击被原版 <c>NMapPoint.OnRelease</c> 的 IsTravelable 判定挡掉 —— 表现就是
+            //   **"双 boss 之间的火堆点不动、过不去"**（用户实测，新开一局也复现）。
+            //   所以这里不再指望原版：**满足"站在第一个 boss 节点上、且序列还没走完"时，我们自己把
+            //   状态提成 Travelable**；其余情况明确置为 Untravelable（防止残留在可点状态）。
+            var boss = map.BossMapPoint!.coord;
+            var cur = state!.CurrentMapCoord;
+            var atFirstBoss = cur != null && cur.Value.col == boss.col && cur.Value.row == boss.row;
+
             var refreshed = 0;
             for (var i = 0; i < _pendingRoomCount; i++)
             {
                 if (!dict.TryGetValue(GetCoord(map, i), out var node) || node == null) continue;
+
+                node.State = atFirstBoss ? MapPointState.Travelable : MapPointState.Untravelable;
                 InvokeInstanceNoArg(node, "RefreshState", "NMapPoint");
                 refreshed++;
             }
 
             if (refreshed > 0)
-                MainFile.DebugLog($"[Gauntlet] 已刷新 {refreshed} 个合成节点的状态");
+            {
+                MainFile.DebugLog(
+                    $"[Gauntlet] 已刷新 {refreshed} 个合成节点的状态" +
+                    $"（站在第一个BOSS={atFirstBoss} ⇒ 置为 {(atFirstBoss ? "Travelable" : "Untravelable")}）");
+
+                var states = new List<string>();
+                for (var i = 0; i < _pendingRoomCount; i++)
+                    if (dict.TryGetValue(GetCoord(map, i), out var n) && n != null)
+                        states.Add($"#{i} state={n.State}");
+                if (states.Count > 0) MainFile.DebugLog($"[SynthHearth] 节点状态: {string.Join(", ", states)}");
+            }
         }
         catch (Exception ex)
         {
