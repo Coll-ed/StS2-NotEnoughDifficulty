@@ -278,6 +278,26 @@ Discipline:
 
 ---
 
+## 🎨 Per-act visuals & music: each act uses **the whole set from its own layer**
+
+Rather than assembling a patchwork, every act takes its **map art / rest-site scene / combat background / BGM /
+ambience** as one coherent set — and the combat background follows the enemy **fight by fight**:
+
+| Act | Map art | Rest site / scenes | Combat background | BGM / ambience |
+|---|---|---|---|---|
+| **Acts 1–3** | Vanilla | Vanilla | Vanilla | Vanilla (this mod does not touch them) |
+| **Act 4 (elite gauntlet)** | The map art of **this run's dominant source layer** (whichever layer has the most undefeated elites) | That layer's rest-site scene | **Per fight**, the assets of **the act the enemy belongs to** (the top boss included) | That layer's BGM; `AmbientSfx` also switches to that layer |
+| **Act 5 (Legend / Myth)** | **Procedurally repainted**: Legend = Overgrowth art → parchment + per-run golden veins; Myth = Hive art → blood-soaked | The matching layer's rest-site scene | Each disguised boss uses **its own source act**; the final boss uses this act's theme | Ambience = act 3's set; every boss plays **its own `CustomBgm`** |
+
+Two deliberate decisions about music (otherwise bosses drawn from other acts would be silent):
+
+- **Load every bank**: acts 4/5 load **all three base layers' music banks** (not just "dominant layer + act 3"),
+  because an encounter's own `BgmEvent` (e.g. `event:/music/act2_a2_v2`) lives in the bank of *its* act;
+  a missing bank means `cannot find music path` and a **silent** fight.
+- **Fallback**: if a boss's `CustomBgm` is still not in memory, `CustomActMissingBgmFallbackPatch` falls back to
+  that act's track instead of letting the fight run in silence.
+- Conversely, **all of this mod's own visuals are procedurally generated** (parchment / blood / vein recolouring /
+  icon recolouring) — no third-party assets are added or redistributed.
 ## 🔍 Debug logging (the most underrated part)
 
 ### Principles
