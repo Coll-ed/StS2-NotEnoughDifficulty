@@ -1,257 +1,351 @@
-# StS2-NotEnoughDifficulty（还不够难！）· **beta 移植分支**
+# StS2-NotEnoughDifficulty（还不够难！）· Beta 移植分支
+
+[English](docs/README.en.md) | 中文
 
 > ### 分支身份
-> - **上游（本 mod 的原始设计与实现）**：<https://github.com/bwnotfound/StS2-NotEnoughDifficulty>
-> - **本分支**：`beta-0.111-port` —— 把 mod 整体迁移适配到《Slay the Spire 2》**public beta v0.111.0**
->   （MegaDot / Godot 4.5.1）+ **BaseLib 3.4.7**，并在此基础上做了成体系的扩展与兼容性改造。
-> - **移植**：[@Coll-ed](https://github.com/Coll-ed)，**受原作者委托**完成。
-> - **著作权**：本 mod 的设计与原始实现归原作者；本分支只包含移植适配与扩展部分，沿用上游 `LICENSE`。
->   发布/分发请以原仓库为准，或先与原作者确认。
+> - **上游（原始设计与实现，著作权归原作者）**：<https://github.com/bwnotfound/StS2-NotEnoughDifficulty>
+> - **本分支**：`beta-0.111-port` —— **受原作者委托**进行的移植 + 扩展分支
+> - **适配环境**：StS2 **Public Beta v0.111.0**（MegaDot / Godot 4.5.1）+ **BaseLib 3.4.7**
+> - **移植**：[@Coll-ed](https://github.com/Coll-ed)；沿用上游 `LICENSE`
 
-把原版 3 层塔扩成 **5（+1）层**，并按层精细调节难度、地图与敌人池。单人 / 多人联机均可，
-多人下 host 端配置自动同步给所有玩家。
-
-本分支是**认真做的一版**：第 4/5 幕是重新设计的，视觉全部**程序化生成**（不新增任何第三方素材），
-并且把"与其它模组共存"当成第一等需求来写。踩过的坑与结论都留在仓库里
-（[`杀戮尖塔2-mod写作踩坑指南.md`](杀戮尖塔2-mod写作踩坑指南.md)，37 条 + §3.x 专题）。
+给《Slay the Spire 2》把原版 3 层塔扩展为 **5+1 层**的深度 Mod：单人 / 多人联机均可用，
+多人下 host 端配置会自动同步给所有玩家。
 
 ---
 
-## 目录
+## 📊 项目规模与交付
 
-- [这个分支是什么](#这个分支是什么)
-- [本分支做了什么](#本分支做了什么)
-  - [1. 第 4 幕：精英连战（确定名单 · 不重复）](#1-第-4-幕精英连战确定名单--不重复)
-  - [2. 第 5 幕：传奇 / 神话两档连战](#2-第-5-幕传奇--神话两档连战)
-  - [3. 双 boss（按层开关）](#3-双-boss按层开关)
-  - [4. 视觉：按"来源幕"的战斗背景与地图纹路](#4-视觉按来源幕的战斗背景与地图纹路)
-  - [5. 多模组共存（本分支的重点）](#5-多模组共存本分支的重点)
-  - [6. 保留并继续维护的上游功能](#6-保留并继续维护的上游功能)
-- [配置项一览](#配置项一览)
-- [构建（离线 · 自包含）](#构建离线--自包含)
-- [安装](#安装)
-- [怎么验证（日志关键字）](#怎么验证日志关键字)
-- [已知限制](#已知限制)
-- [版本历史（本分支）](#版本历史本分支)
-- [文档](#文档)
-- [致谢](#致谢)
-
----
-
-## 这个分支是什么
-
-上游把 mod 做到了 **1.0.1（BaseLib 3.3.0）**。游戏进入 beta v0.111.0 后，本分支做了三件事：
-
-1. **移植**：全部代码在新游戏版本 + BaseLib 3.4.7 上跑通（构建自包含、零网络依赖）；
-2. **重做第 4/5 幕**：目标不再是"随便加两层"，而是"这两层本身就是一个完整、可预期、不重复的玩法"；
-3. **把多模组共存做成硬指标**：层号判定、名单口径、背景与场景，全部改成"按数据 / 按坐标"，
-   而不是"按具体 act 类型"。
-
----
-
-## 本分支做了什么
-
-### 1. 第 4 幕：精英连战（确定名单 · 不重复）
-
-**设计**：这一层就是"把游戏里所有基础精英各打一遍"，与"你之前打没打过"无关。
-
-| 环节 | 做法 |
+| 项 | 数据 |
 |---|---|
-| 名单 | 全部基础精英（beta v0.111.0 为 **12 个**：密林 3 + 暗港 3 + 巢穴 3 + 荣耀 3），全局去重、顺序固定 |
-| 落位 | 地图生成后按「离起点由近到远」（BFS 深度 → 列）**逐个钉**到战斗房上：`Dictionary<MapCoord, Encounter>` |
-| 取怪 | 进房时按 **当前坐标查表**（`RunState.CurrentMapCoord`）⇒ **确定的、不可能重复** |
-| 深度 | 从最低深度逐格加深，直到战斗房 ≥ 名单长度；富余战斗位→火堆，不足则问号→精英 |
-| 图标 | 本层所有战斗房统一精英图标（数量 = 名单长度，不虚高） |
-
-相关文件：`ExtraActs/Patches/Act4ElitePlan.cs`、`ActDepthPatch.cs`、`Act5/Act5MapPatch.cs`。
-
-### 2. 第 5 幕：传奇 / 神话两档连战
-
-**两档**（配置项 `Act5Difficulty`）：
-
-- **考验（Trial）**：先古之名 → 一层随机 BOSS → 二层随机 BOSS → 最终 BOSS（三层当前分配的那个），中间不夹火堆。
-- **神话（Extreme）**：一~二~三层循环取"**进入本幕之前没打过**"的 BOSS，三层那个压轴当最终 BOSS，
-  **火堆数 = 场数 − 1**（每两场之间一个）。
-
-**实现要点**：
-
-- **自研地图节点类** `Act5BossNode : NMapPoint`（不是套用原版节点）：
-  图标**跟着自己的 encounter 走**（spine 骨架优先，否则 `*_icon.png` / `*_icon_outline.png`），
-  点击判定只认原始状态机 `State == Travelable`。
-- **直线地图** `Act5LinearMap`：起点(先古之名) → 链位（伪装BOSS/火堆交替）→ `BossMapPoint`(最终BOSS)。
-- **伪装 BOSS**：图标是 BOSS 图标、战斗是 BOSS 的 encounter，但**按小怪房结算**（小怪级奖励、不结束本幕）。
-- **收尾闸门**：**只有踩在最终 BOSS 节点上的那一场**才结束本幕 —— 判据是**坐标**，与名单无关，永不漂移。
-- **BOSS 图标改色**（程序化）：传奇 = 黑金；神话 = 血色。
-- 节点多了会自动换布局（直线 ≤3 / 分叉 4–6 / 蛇形 ≥7）并等比缩放，不会跑出地图。
-
-相关文件：`Act5/Act5LinearMap.cs`、`Act5/Act5MidBoss.cs`、`Act5/Act5BossNode.cs`、
-`Act5/Act5BossDisplay.cs`、`Act5/Act5Disguised*Patch.cs`。
-
-### 3. 双 boss（按层开关）
-
-- 1~4 层各自一个开关（`Act1_DoubleBoss` … `Act4_DoubleBoss`），默认关。
-- 第二个 boss 从**该层自己的 boss 池**里选（不含首个），用 **FNV-1a 稳定散列**抽取：
-  不吃游戏随机流、host/client 各自算都一致。
-- 两个 boss 之间可插入**合成火堆 / 商店**（`InterBossHearth` / `InterBossShop`），
-  手法照搬工坊模组 Boss Gauntlet（见 [`BossGauntlet-合成节点法-拆解笔记.md`](BossGauntlet-合成节点法-拆解笔记.md)）。
-- 进阶 10（N10）的双 boss 被**钉回第 3 层**（不随 act 列表变长而漂到最后一层）。
-
-### 4. 视觉：按"来源幕"的战斗背景与地图纹路
-
-- **战斗背景**：第 4/5 幕的**精英**战，背景切到"**敌人自己所属的那一幕**"。
-  做法不是"自己造背景"，而是 **改写 `parentAct`**，让原版与第三方模组的背景钩子**照常生效** ——
-  这样别的模组（如 ActsFromThePast 的自绘竞技场）也能正确显示。
-- **地图纹路**：按来源幕变色。色相不是取 UI 的近黑色，而是从**该 act 自己的地图美术**统计出来的
-  "招牌色相"；踩问号/商店/宝箱/火堆回默认紫。
-- **第 5 幕主题底图**（程序化）：传奇 = 羊皮纸 + 每局随机的金色纹路；神话 = 血染（浓淡由噪声决定）。
-- 全程**不引入任何外部素材**。
-
-### 5. 多模组共存（本分支的重点）
-
-| 场景 | 处理 |
-|---|---|
-| 别的模组给某层加了 **act 变体** | 层号按 `ModelDb.ActsByIndex` / `RunState.Acts` / `act.Index` **数据判定**（绝不按类型写死），整幕模组的 act 自动纳入池子 |
-| 别的模组**占了第 4 幕**（如 ACT 4 心脏） | 本模组的两个幕**自动顺延为第 5、6 幕**，并保证排在 act 列表末尾；开关仍作用于自己的幕（`Act4HeartAutoShift`，可关） |
-| 别的模组加了**精英/BOSS** | 自动进第 4 幕名单 / 第 5 幕编排（走各 act 自己的池子） |
-| 别的模组**改了层号/顺序** | 名单按"进入本幕之前的战绩"计算 ⇒ 整幕内恒定，不漂移 |
-| 别的模组**自己画背景** | 我们只改写 `parentAct`，它的钩子自己跑（不与它抢） |
-| 别的模组**也想画地图节点** | 集成节点类只替换自己的节点；连锁/可通行性交给原版 `RecalculateTravelability` |
-
-### 6. 保留并继续维护的上游功能
-
-按层 HP / 伤害倍率（`1 + ActFloor × 0.1 × Y%` / `× 0.05 × X%`）、各层"额外强化"开关、
-双 boss 与合成火堆/商店、额外加速（引擎级 TimeScale，纯本地）、ack-based 多人配置同步、
-官方设置界面注入、读档健壮性兜底（mod act 数据丢失时按池确定性重建）、
-以及一整套兼容层（多模组 / 旧存档 / 原版机制）。
-
-> ⚠️ **本分支尚未合并上游 main 的这几项**：地图长度 / 房间密度、敌人移除列表、
-> 以及上游自己的第 5 幕早期 patch。本分支基于较早的快照 + 重做的那套实现，
-> 相对上游的 diff 是"替换实现"而不是纯叠加 —— 取舍请见 PR 说明。
+| 代码体量 | **67 个 `.cs` / 9,988 行 / 16 个目录** |
+| 改造深度 | 约 **48 个 Harmony Patch 目标**（游戏侧方法）、**313 处日志埋点** |
+| 本地化 | 完整中英双语（配置项 title + description 全覆盖） |
+| 构建质量 | `dotnet build --no-incremental` **0 错误 0 警告** |
+| 交付形态 | `.dll + .pdb + .pck + .json`；`.pck` 由自研打包器 `tools/MakePck` **程序化生成**，无需安装 Godot |
+| 构建自包含 | 游戏 / BaseLib 程序集引用本地 `_refs\`，NuGet 指向本地离线 Feed ⇒ **零网络依赖构建** |
 
 ---
 
-## 配置项一览
+## ✨ 核心功能体系
 
-| 分区 | 内容 |
+### 1. 第 4 幕 · 精英连战（重制层）
+
+本层核心体验为"遍历游戏中所有基础精英"，与玩家历史战绩无关。
+
+- **动态名单**：涵盖当前版本全部基础精英（Beta v0.111.0 为 **12 个**：密林 3 + 暗港 3 + 巢穴 3 + 荣耀 3）。
+  全局去重、顺序固定（层 1→3，Act 内按池顺序）。**未硬编码任何数字或 Act 类型** —— 整幕类模组新增的
+  Act 变体及其精英会**自动纳入名单**。
+- **坐标落位机制**：地图生成后，将名单按"离起点由近到远"（BFS 深度 → 列）逐个绑定至战斗房
+  （`Dictionary<MapCoord, Encounter>`）；进房时通过 `RunState.CurrentMapCoord` 查表取怪。
+  ⇒ **确定性极高、不可能重复**；读档一致（以坐标为身份标识）。
+- **深度自适应**：从最低深度**逐格加深**，直到"战斗房数 ≥ 名单长度"；富余战斗位转为火堆，
+  不足则将问号房转为精英房。深度上限随名单长度动态伸缩，兼容大型内容模组。
+- **视觉与兼容**：本层战斗房统一使用精英图标，数量精确等于名单长度；
+  仅在"本层属于本模组 **且** 坐标有落位"时接管取怪逻辑，其余情况交还原版。
+
+### 2. 第 5 幕 · 传奇 / 神话双档连战
+
+通过配置项 `Act5Difficulty` 切换两种模式：
+
+- **考验（Trial）**：先古之名 → 随机 BOSS ×2 → 最终 BOSS（当前分配），中间无火堆。
+- **神话（Extreme）**：循环选取"**进入本幕前未打过**"的 BOSS，第三场压轴作为最终 BOSS；
+  **火堆数 = 场数 − 1**（每两场之间插入一个火堆）。
+
+实现要点：
+
+- **自研地图节点 `Act5BossNode`**：继承 `NMapPoint`，图标跟随 Encounter（优先 Spine 骨架，否则
+  `*_icon.png` / `*_icon_outline.png`）；点击判定**仅识别原始状态机 `State == Travelable`**
+  （避免被调试旅行短路），完整复刻原版聚焦 / 按下 / 抬起、投票容器及准星交互。
+- **直线地图 `Act5LinearMap`**：起点（先古之名）→ 链位（伪装 BOSS / 火堆交替）→ `BossMapPoint`（最终 BOSS）；
+  链位数量动态生成、行数自适应。
+- **伪装 BOSS**：显示 BOSS 图标与 Encounter，但**按小怪房结算**（小怪级奖励、不结束本幕）。
+- **收尾闸门**：仅当踩在最终 BOSS 节点（`IsAtFinalBossNode`）时才结束本幕 —— 与名单**解耦**，永不漂移。
+- **布局策略**：链位 ≤3 直线 / 4–6 分叉（火堆居中）/ ≥7 蛇形分栏；整条链等比缩放居中，不溢出地图。
+- **程序化特效**：BOSS 图标改色（传奇 = 黑金，神话 = 血色）、地图纹路光效流动。
+
+### 3. 双 Boss 与「合成节点」
+
+- **独立开关**：1~4 层各自配置 `Act1_DoubleBoss` … `Act4_DoubleBoss`（默认关闭）。
+- **稳定抽样**：第二个 Boss 从该层池中排除首个后选出，采用 **FNV-1a 稳定散列** ——
+  不吃游戏随机流，Host / Client 各自计算一致，读档一致。
+- **合成节点**：双 Boss 间可插入**合成火堆**（`InterBossHearth` 默认开）或**合成商店**
+  （`InterBossShop` 默认关）。实现手法为"虚拟坐标 + 原版节点工厂 + 删直连 + 重串链 + 重画路径 + 重算可通行"
+  （照搬工坊模组 Boss Gauntlet，拆解笔记见下）。
+- **N10 修正**：进阶 10 的双 Boss 强制**钉回第 3 层**，防止因 Act 列表延长而漂移至末尾。
+
+### 4. 全程序化视觉主题（零外部素材）
+
+- **战斗背景折返**：本模组幕中的精英战，背景切换为"敌人所属的那一幕"。通过**改写 `parentAct`** 实现，
+  确保原版与**第三方模组的背景钩子照常生效**，不覆盖他人自定义竞技场。
+- **地图纹路换色**：色相取自该 Act 地图美术的"**招牌色相**"（饱和度加权色相直方图峰值），
+  而非 UI 近黑色；踩问号 / 商店 / 宝箱 / 火堆时恢复默认紫。底图着色集成于
+  `ActModel.get_MapTopBg/MidBg/BotBg`（缓存键含色相），层变化时触发原版重挂。
+- **第 5 幕专属底图**：传奇 = 羊皮纸 + **每局随机**金色纹路（Run Seed 派生噪声）；
+  神话 = 血染风格（外围血液色、内部暗红 + 脉络，浓度由低频噪声控制）。
+
+### 5. 难度系统
+
+- **新公式**（取代上游旧版"三层倍率链"）：血量 `1 + ActFloor × 0.1 × Y/100`、
+  伤害 `1 + ActFloor × 0.05 × X/100`；仅在启用对应层额外强化（`ActX_ExtraScaling`）时生效
+  （第 4/5 幕默认开启）。
+- **运行时 HP 补丁**：除出生设值外，还拦截**战斗中最大生命变更**（如 TestSubject 复活、ToughEgg 孵化、
+  千足虫复活类 `Heal`/`SetMaxHp`），防止倍率被绕过。
+- **多模组聚合**：通过 `ModelDb.ActsByIndex` 聚合各层池子，整幕模组的 Act 变体同样计入。
+
+### 6. 多人联机保障
+
+- **Ack-Based 配置同步**：Host 广播配置 → Client Apply 后回 Ack → **Host 收齐全 Ack 才开局**；
+  超时 / 失败会拒绝开局并弹窗提示，杜绝"不同配置开局"。`StartRunLobby` 与 `LoadRunLobby` 共用此流程。
+- **确定性 Hash 兜底**：使 `ModelDb` Hash 计算确定化，消除 Mod 环境差异导致的握手失败（实验性）。
+- **本地开关隔离**：如"额外加速倍率"标记 `[ConfigSyncIgnore]`，允许每位玩家独立设置。
+
+### 7. 官方设置界面注入
+
+将本 Mod 开关（如"启用额外加速 / 加速倍率"）注入**官方设置页**，紧贴 FastMode 行：
+复制 Base Game Row 为模板、赋予唯一 Name、Patch 原版 Row 工厂 / 路由进行创建与刷新。
+实现**官方界面 ↔ BaseLib 配置界面 ↔ 磁盘 Cfg** 三处双向实时同步。
+
+### 8. 额外加速
+
+引擎级 `TimeScale` 全局加速，与游戏自带"快速模式"**相乘叠加**；纯本地表现，不影响联机同步。
+采用 static 控制器而非 Node 子类，避免随场景销毁而失效。
+
+### 9. 兼容层设计（硬指标）
+
+| 场景 | 处理策略 |
 |---|---|
-| General | 总开关、日志调试（排障时打开，会把关键决策打成日志） |
-| Difficulty | 全局 HP / 伤害倍率系数 X/Y |
-| ExtraScalingPerAct | 1~5 各层的额外强化开关 |
-| ActComposition | 各层是否双 boss、双 boss 之间插火堆 / 商店 |
-| Act4_EncWeights / EventWeights / BossWeights | 第 4 幕的池子权重混合 |
-| Act5Map | 第 5 幕是否用自定义直线地图、难度档位（考验 / 神话） |
-| Compat | 第 4 幕被占用时自动顺延；自带背景的敌人是否强制按来源幕覆盖 |
-| BehaviorToggles / Speed | 行为开关、额外加速倍率 |
+| 其他模组增加 Act 变体 | 层号按 `ModelDb.ActsByIndex` / `RunState.Acts` / `act.Index` **数据判定**，绝不按类型写死 |
+| 其他模组占用第 4 幕 | 本模组两幕**自动顺延为第 5、6 幕**并排在列表末尾；`Act4HeartAutoShift` 可关；`Act4_*` / `Act5_*` 开关仍只作用于本模组自己的幕 |
+| 其他模组新增精英 / BOSS | 自动进入第 4 幕名单 / 第 5 幕编排（走各 Act 自有池子） |
+| 名单"边打边变" | 名单按"**进入本幕之前**"的战绩计算 ⇒ 整幕内恒定、读档一致 |
+| 其他模组自定义背景 | 仅改写 `parentAct`，对方钩子自行执行，不抢占 |
+| 其他模组修改地图 / 节点 | 仅替换自身节点；连锁与可通行性交回原版 `RecalculateTravelability` |
+| 其他模组 Patch 同一方法 | `ModCompat` 运行时检测 + 放权 + 启动时输出**兼容性报告** |
+| 旧存档兼容 | 保留类名 / 字段名；读档防御兜底（Mod Act 数据丢失时按池确定性重建） |
 
-配置项中英双语齐全（`localization/{zhs,eng}/settings_ui.json`）。
+### 10. 工程与工具链
+
+自研工具集（`tools/`）：
+
+- **`MakePck`**：程序化生成 `.pck`，免装 Godot。
+- **`DumpIl`**：反汇编游戏 / 模组 DLL —— 本项目所有"游戏内部机制"结论均源于此。
+- **`DumpApi` / `DumpStrings` / `FindRef` / `EnumProbe`**：类型清单 / 字符串提取 / 调用点搜索 / 枚举探测。
+- **`check-patch-targets.ps1`**：校验所有 Harmony Patch 目标在目标 DLL 中**真实存在**，防止静默失效。
+
+工程纪律：
+
+- **逐类隔离 Patch**：每个 Patch 类单独 Try/Catch，失败仅打印 `Patch class X failed (skipped)`，
+  单点故障不拖垮整体。
+- **诊断优先**：每个 Patch 入口**无条件先打一行日志**，用于区分"未被调用 / 提前 Return / 抛异常"。
+
+### 11. 仓库文档索引
+
+| 文档 | 内容 |
+|---|---|
+| `杀戮尖塔2-mod写作踩坑指南.md` | **37 条实战坑 + 12 章方法论** |
+| `待办与交接-第三阶段.md` | 进度 / 待办 / 硬事实（交接入口） |
+| `BossGauntlet-合成节点法-拆解笔记.md` | 地图插入自定义节点的完整手法 |
+| `README-移植与构建.md` | 移植差异与离线构建步骤 |
 
 ---
 
-## 构建（离线 · 自包含）
+## 🔍 调试日志体系（核心亮点）
+
+### 设计原则
+
+1. **单一开关**：`General → 日志调试`（`DebugLogging`，默认关），开启后 Mod 所有决策均留下可读中文日志。
+2. **入口即记录**：Patch 入口无条件先打一行，快速判断功能是否被调用。
+3. **日志即证据链**：所有内部机制结论源自日志 + IL；排障流程为"按标签搜日志 → 看决策输入 → 定位具体判断"。
+4. **洪泛预警**：正常一轮几十 KB；若涨至 MB 级即为循环刷屏
+   （曾捕获 **9.3 MB / 68,000 行**日志，其中 **42,629 行**为同一组三行重复的自递归崩溃）。
+
+### 日志标签总表
+
+| 标签 | 回答什么问题 | 典型日志示例 |
+|---|---|---|
+| `[Act4] 精英落位` | 本局第 4 幕精英名单与顺序 | `[Act4] 精英落位: 12 个战斗房 ← 名单 12 个 \| 由下往上 = BYGONE_EFFIGY_ELITE → … → SOUL_NEXUS_ELITE` |
+| `[Act4] 战斗房 (c,r) → 指定精英` | 特定格子对应的敌人 | `[Act4] 战斗房 (3,5) → 指定精英 'PHROG_PARASITE_ELITE'` |
+| `[Act4] 本场来源` | 敌人归属幕 | `[Act4] 本场来源 = 'X' → act 层 1 / 'Underdocks'（旅行色 180F24 / 招牌色相 258°）` |
+| `[Act4] 地图染色` | 地图纹路染色依据 | `[Act4] 地图染色 ← 'X' 属于 Underdocks（层 1）色相 258°` |
+| `[Act4] 地图校正` | 深度 / 战斗房 / 火堆最终账目 | `[Act4] 地图校正: 目标精英(名单)=12 \| 地图战斗房=14 \| 富余战斗位→火堆=2 \| 最终：战斗房=12` |
+| `[ActDepth]` | 深度求解与收敛 | `[ActDepth] 收敛: 深度 8 rooms → 战斗房 15 ≥ 目标 12（逐格 0 轮）` |
+| `[Act4Probe]` | 种子预测器状态 | `[Act4Probe] 房间数覆盖 patch 已装载（只装一次）` |
+| `[Act5] BOSS 编排` | 第 5 幕 BOSS 序列与档位 | `[Act5] BOSS 编排（极限）: 伪装=A → B → … → J \| 火堆间隔=True \| 最终BOSS='AEONGLASS_BOSS'` |
+| `[Act5LinearMap] 建图` | 地图骨架参数 | `[Act5LinearMap] 建图: 网格 7x21 \| 链位 19（伪装BOSS 10 + 火堆 9） \| BOSS(3,20) = BossMapPoint` |
+| `[Act5Mid] 布局形态 / 定位参照` | 链位摆放与缩放 | `[Act5Mid] 布局形态=蛇形（4 栏/行 × 3 行）… \| 行距=567px 缩放=1.00 顶部留白=383px` |
+| `[Act5Mid] 巡检` | 节点可通行性与状态机 | `[Act5Mid] 巡检 (3,5) Monster: 前一个已走=True … State=Travelable→Travelable 可点=False` |
+| `[Act5Mid] 注入完成` | 格子内容与图标 | `[Act5Mid] 注入完成: 链位 19 \| (3,1) X [贴图] \| (3,3) Y [spine]` |
+| `[Act5BossNode]` | 自研节点生命周期 | `(3,1) 美术子树已搬入 \| size=(374,306) …` / `鼠标按下 \| enabled=True State=Travelable` |
+| `[Act5] 伪装BOSS` | 房间类型改写 | `[Act5] 'X' 不在最终BOSS节点 ⇒ 房间类型 Boss → Monster（按小怪结算）` |
+| `[Act5] …不结束本幕` | 收尾闸门拦截 | `[Act5] 伪装BOSS 奖励界面「继续」→ 不结束本幕：按原版双BOSS中间那步关界面回地图` |
+| `[背景折返]` | 战斗背景归属 | `[背景折返] 'X'：parentAct Act4Model → 'TheBeyondAct'（自带背景=False）` |
+| `[Theme]` | 程序化贴图与色相 | `[Theme] 'Underdocks' 招牌色相 = 258°` / `BOSS 图标改色（传奇=黑金）` |
+| `[Stripe]` | 地图纹路换色 | `[Stripe] 地图纹路 → 层 1，色相 258°（重挂 3 张底图）` |
+| `[DoubleBoss]` | Act 分层判定 | `[DoubleBoss] 本局 act 分层判定：1=Overgrowth(Index=0) \| 2=某模组Act2(Index=1)` |
+| `[ActLayout]` | 幕顺延检测 | `[ActLayout] 检测到第 4 幕已被 'X（HeartAct）' 占用 ⇒ 本模组自动顺延为第 5/6 幕` |
+| `[N10DoubleBoss]` | N10 双 Boss 修正 | `[N10DoubleBoss] …：清掉 N 个被误加的第二个 boss（act5 的保留不动）` |
+| `[Gauntlet]` | 合成节点接手 | `[Gauntlet] 建图前检查: act=… HasSecondBoss=…` / `注入结果 = True` |
+| `[SynthHearth]` | 合成火堆注入 | `[SynthHearth] act3：N10 已接管双 boss，本 mod 不注入火堆` |
+| `[Blueprint]` | 构筑窗口检查 | `[Blueprint] 第 N 层已构筑过，跳过` |
+| `[MapGuard]` | 卡死点击拦截 | `[MapGuard] 忽略对「当前所在坐标」的点击 (3,1) —— 不投票` |
+| `[MapPathsFix]` | 重复键修复 | `[MapPathsFix] 已清空 NMapScreen._paths（避免 DrawPaths 重复键崩溃）` |
+| `[RunProgress]` | 敌人归属判定 | `[RunProgress] 'X' 有 3 个候选 act：Glory(默认) / … ⇒ 取 '…'` |
+| `[ModCompat]` | 兼容性报告 | `[ModCompat] 关键 patch 点上的其它 mod：…` |
+| `[BossInventory]` | BOSS 清点 | `[BossInventory] 当前层=… BossEncounter=… SecondBoss=…` |
+| `[Overlay]` | 程序化 Overlay | `[Overlay] 边缘雾气层已挂上（神话档=False）` |
+| `[Settings]` / `[Slider]` | 设置页注入 | `Settings injection: slider row 'MO_ExtraSpeedMultiplierRow' inserted at index 6` |
+| `[ConfigSync]` | 联机同步状态 | 广播 / ack / 超时 / 拒绝开局的每一步 |
+| `[PatchScope]` | Patch 隔离 | `Patch class X failed (skipped)` |
+
+### 完整证据链示例
+
+同一场战斗可通过日志完整复现决策过程：
+
+```text
+[ActDepth]      收敛: 深度 8 rooms → 战斗房 15 ≥ 目标 12（逐格 0 轮）
+[Act4] 地图校正: 目标精英(名单)=12 | 地图战斗房=14 | 富余战斗位→火堆=2 | 最终：战斗房=12
+[Act4] 精英落位: 12 个战斗房 ← 名单 12 个 | 由下往上 = BYGONE_EFFIGY_ELITE → … → SOUL_NEXUS_ELITE
+[Act4] 战斗房 (3,5) → 指定精英 'PHROG_PARASITE_ELITE'
+[背景折返] 'PHROG_PARASITE_ELITE'：parentAct Act4Model → 'Overgrowth'（自带背景=False…）
+[Act4] 本场来源 = 'PHROG_PARASITE_ELITE' → act 层 1 / 'Overgrowth'（旅行色 28231D / 招牌色相 38°）
+[Act4] 地图染色 ← 'PHROG_PARASITE_ELITE' 属于 Overgrowth（层 1）色相 38°
+[Stripe] 地图纹路 → 层 1，色相 38°（重挂 3 张底图）
+```
+
+⇒ 仅凭日志即可回答："这一场是谁决定的、为什么是他、背景 / 配色为什么是这个、地图是否按预期染色"。
+
+### 日志实战救场案例
+
+1. **"背景慢一场"**：日志显示"取资产"早于"写入本场来源" ⇒ 定位到"背景资产有**两个调用点**，
+   预载比房间建立更早"，而非算法问题。
+2. **自递归崩溃**：日志 9.3 MB、42,629 行重复 ⇒ 30 秒定位为"**聚合 Act 把自己选成了来源幕**"，
+   无需读崩溃堆栈。
+3. **"打完 BOSS 直接进建筑师"**：全库扫描 `SetLocalPlayerReady` **唯一调用点** + 日志数字差
+   （房间类型改写 96 次 vs 收尾拦截 3 次）⇒ 定位"名单漂移"。
+4. **"神话火堆消失"**：`[Act5LinearMap]` 与 `[Act5]` 两处数字不符 ⇒ 直接怀疑时序（建图早于名单定稿）。
+5. **模组 Act 变体无双 Boss**：`[DoubleBoss]` 打出每个 Act 层号 ⇒ 一眼看出"模组 Act 未判出"，
+   定位"按类型写死的映射表"。
+
+---
+
+## 🛠️ 工程卖点总结
+
+- **稳健 Patch**：约 48 个 Harmony Patch 点，全部逐类隔离 + 目标存在性校验脚本。
+- **确定性优先**：双 Boss 抽样用稳定散列，名单仅依赖同步数据（Seed + 战绩），多人两端计算一致，
+  不引入新随机源。
+- **兼容优先**：层号 / 归属全按数据判定，遇占用自动顺延；与第三方背景钩子**合作而非覆盖**。
+- **可验证优先**：每个功能均有对应日志标签，用户可自行验证。
+- **零素材依赖**：所有视觉效果均为程序化生成。
+- **工具链自研**：连 `.pck` 打包器均为自研，摆脱 Godot 编辑器依赖。
+
+---
+
+## ⚠️ 与上游的差异：本分支移除 / 替换的功能
+
+> 这些是移植过程中**经与原作者沟通后**一并精简/替换的部分（避免维护两份重复实现）；
+> 代码里已删除，仅剩 Godot `.uid` 残留。**不是**现有功能，请勿据此判断缺失。
+
+| 项 | 处理 |
+|---|---|
+| 地图长度 / 房间密度调节 | 移除（`MapLengthPatch`、`MapDensityScalingPatch`、`SkipPruningForLongMapsPatch`） |
+| 敌人移除列表 | 移除（`RemovalListPopup`） |
+| 难度预设（一键档位） | 移除，仅保留 X/Y 系数 + 各层开关 |
+| Desync 诊断 Patch | 移除（`DesyncDiagnosticPatch`） |
+| 第 5 幕的早期实现 | 由本分支的 `Act5/*`（自研节点 + 直线地图 + 双档连战）**替换** |
+| `AvoidAdjacentEncounterDuplicate` / `EncounterDeduplicator` | 旧设计残留（新"确定名单 + 坐标落位"机制已不可能重复），下轮清理 |
+
+---
+
+## 📦 安装
+
+### 依赖
+
+- Slay the Spire 2 **public beta v0.111.0**
+- [BaseLib](https://github.com/Alchyr/BaseLib-StS2) **3.4.7**（必须，且需与游戏版本匹配）
+
+### 步骤
+
+1. 下载 `NotEnoughDifficulty.dll` / `.pdb` / `.pck` / `.json`；
+2. 一起放入 `<游戏目录>\mods\NotEnoughDifficulty\`；
+3. 启动游戏并在 Mod 列表启用。
+
+日志位于 `%APPDATA%\SlayTheSpire2\logs\godot.log`。
+
+---
+
+## 🔧 构建（离线 · 自包含）
 
 ```powershell
 # 1) 依赖（本仓库不含，需自备）
-#    <仓库根>\_refs\game\      ← 游戏目录 data_sts2_windows_x86_64 下的 sts2.dll / 0Harmony.dll /
+#    <仓库根>\_refs\game\      ← 游戏 data_sts2_windows_x86_64 下的 sts2.dll / 0Harmony.dll /
 #                                 GodotSharp.dll / MonoMod.*.dll / sts2.*.json
-#    <仓库根>\_refs\baselib\   ← BaseLib.dll（工坊或作者发布页）
-#    <仓库根>\_refs\nuget-feed\ ← Godot 4.5.1 的 4 个 nupkg（Godot.NET.Sdk / GodotSharp /
-#                                 GodotSharpEditor / Godot.SourceGenerators）
+#    <仓库根>\_refs\baselib\   ← BaseLib.dll
+#    <仓库根>\_refs\nuget-feed\ ← Godot 4.5.1 的 4 个 nupkg
 # 2) 编译
 dotnet build --no-incremental          # 产物 → .\dist\
 # 3) 打包 .pck（本地化等资源；免装 Godot）
 dotnet run --project tools\MakePck -- .\dist\NotEnoughDifficulty.pck NotEnoughDifficulty .\NotEnoughDifficulty (Get-ChildItem .\NotEnoughDifficulty\localization -Recurse -Filter *.json | % FullName)
 ```
 
-> ⚠️ 与上游构建的差异：本分支的 `NotEnoughDifficulty.csproj` 用 `..\_refs\...` 本地引用 +
-> `nuget.config` 指向本地离线 feed（为了在无网络/沙箱环境下也能构建）。合入上游前可能需要换回
-> 上游原来的引用方式 —— 详见 [`README-移植与构建.md`](README-移植与构建.md)。
+> 与上游构建的差异见 [`README-移植与构建.md`](README-移植与构建.md)。
 
 ---
 
-## 安装
+## ⚙️ 配置项一览
 
-把 `NotEnoughDifficulty.{dll,pdb,pck,json}` 一起放进
-`<StS2>\mods\NotEnoughDifficulty\`，重启游戏。日志：`%APPDATA%\SlayTheSpire2\logs\godot.log`。
-多人：所有玩家 mod 版本必须**严格一致**。
-
----
-
-## 怎么验证（日志关键字）
-
-打开 `General → 日志调试`，然后按关键字搜日志：
-
-| 关心什么 | 关键字 |
+| 分区 | 内容 |
 |---|---|
-| 第 4 幕名单与落位 | `[Act4] 精英落位:` / `[Act4] 战斗房 (col,row) → 指定精英` |
-| 第 4 幕深度求解 | `[ActDepth] 收敛: 深度 … 战斗房 … ≥ 目标 …` |
-| 第 5 幕编排与链位 | `[Act5] BOSS 编排（考验/极限）:` / `[Act5LinearMap] 建图: … 链位 N（伪装BOSS X + 火堆 Y）` |
-| 第 5 幕节点注入 | `[Act5Mid] 注入完成: 链位 …` / `[Act5BossNode] (col,row) 就绪` |
-| 不结束本幕是否生效 | `[Act5] 伪装BOSS 奖励界面「继续」→ 不结束本幕…` |
-| 战斗背景跟随来源幕 | `[背景折返] '…'：parentAct … → '…'`（每场一行） |
-| 地图纹路按来源幕 | `[Theme] '…' 招牌色相 = …°` / `[Stripe] 地图纹路 → 层 N，色相 …°` |
-| 双 boss | `[DoubleBoss] 本局 act 分层判定：…` / `[DoubleBoss] actN: 首个='X' 第二='Y'` |
-| 与心脏模组共存 | `[ActLayout] 检测到第 4 幕已被 '…' 占用 ⇒ 本模组自动顺延为第 5/6 幕` |
+| General | 总开关、日志调试（排障时打开） |
+| Difficulty | 全局 HP / 伤害倍率系数 X/Y |
+| ExtraScalingPerAct | 各层额外强化开关（第 4/5 幕默认开） |
+| ActComposition | 各层双 boss、双 boss 间是否插火堆 / 商店、第 5 幕档位 |
+| Act4_EncWeights / EventWeights / BossWeights | 第 4 幕池子权重混合 |
+| Act5Map | 第 5 幕是否使用自定义直线地图 |
+| Compat | 第 4 幕被占用时自动顺延；自带背景的敌人是否强制按来源幕覆盖 |
+| BehaviorToggles / Speed | 行为开关、额外加速 |
 
 ---
 
-## 已知限制
+## ⚠️ 已知限制
 
-- **`.pck` 需要自研打包器**：本分支不用 Godot 导出，`.pck` 由 `tools/MakePck` 生成（改本地化后必须重打）。
-- **旧存档**：本分支某些修复只对"之后新建的地图"生效（例如第 5 幕火堆数量）；旧存档里已经建好的那一幕
-  不会补，需要重进本幕或新开一局。
-- **英文 README 尚未重写**：`docs/README.en.md` 仍是上游版本，内容落后于本分支。
-- **多人**：不存在协议层向后兼容，升级需所有玩家同步升级。
-- **多 mod 环境**：极端组合下仍可能有别的模组在 `FromSerializable` 链上丢数据导致读档异常；
-  本 mod 已加防御兜底避免硬崩（`ExtraActs/Compat/RoomSetLoadNullGuardPatch.cs`），遇到请附日志反馈。
+- 本分支使用 `_refs\` 本地引用 + 离线 NuGet Feed 构建，合入上游前可能需切换引用方式。
+- 部分修复**仅对新建地图生效**（旧存档已生成的幕不会补全，如第 5 幕火堆数量）。
+- `docs/README.en.md` 仍为上游版本，落后于本分支。
+- 多人模式**无协议层向后兼容**，升级需所有玩家同步。
+- 极端多 Mod 组合下，其他模组仍可能在读档链丢数据（本 Mod 已加防御兜底避免硬崩）。
 
 ---
 
-## 版本历史（本分支）
+## 📝 版本历史
 
 | 版本 / 提交 | 主要变化 |
 |---|---|
-| `beta-0.111-port` | 移植到 beta v0.111.0 + BaseLib 3.4.7；**第 4 幕重做为"确定名单"**（12 个精英各一次、按坐标落位、不重复）；**第 5 幕重做**（自研节点类 + 直线地图 + 传奇/神话两档 + 火堆 = 场数 − 1 + 只有最终 BOSS 收尾）；**战斗背景按来源幕**（改写 `parentAct`，兼容第三方）；**地图纹路按来源幕换色**（招牌色相从美术统计）；**多模组共存**（层号数据判定、第 4 幕被占自动顺延 5/6、双 boss 支持模组 act 变体）；修复移植过程中的 11 类实机问题（详见下方文档） |
+| `beta-0.111-port` | 移植到 beta v0.111.0 + BaseLib 3.4.7；**第 4 幕重制**为"确定名单 + 坐标落位"；**第 5 幕重制**（自研节点类 / 直线地图 / 传奇·神话双档 / 火堆 = 场数 − 1 / 仅最终 BOSS 收尾）；**战斗背景按来源幕**（改写 `parentAct`，兼容第三方）；**地图纹路按来源幕换色**（美术统计招牌色相）；**多模组共存**（层号数据判定、第 4 幕被占自动顺延 5/6、双 boss 支持模组 Act 变体）；并修掉移植过程中的 11 类实机问题 |
 
 ---
 
-## 文档
-
-| 文档 | 内容 |
-|---|---|
-| [`杀戮尖塔2-mod写作踩坑指南.md`](杀戮尖塔2-mod写作踩坑指南.md) | **37 条实战坑** + 12 章方法论：读 IL 而不是猜、Harmony 属性 patch、BaseLib 钩子、时序、递归与日志洪泛、按类别收窄作用域…… |
-| [`待办与交接-第三阶段.md`](待办与交接-第三阶段.md) | 当前进度、待办、硬事实（本分支的"交接入口"） |
-| [`BossGauntlet-合成节点法-拆解笔记.md`](BossGauntlet-合成节点法-拆解笔记.md) | 在地图里插自定义节点（合成火堆/商店）的完整手法 |
-| [`README-移植与构建.md`](README-移植与构建.md) | 移植差异、离线构建步骤、依赖清单 |
-
----
-
-## 致谢
+## 🙏 致谢
 
 **本体**
 
-- **[bwnotfound](https://github.com/bwnotfound)** —— 本 mod 的**设计与全部原始实现**（第 4/5 层、
-  按层难度倍率、难度预设、地图长度/密度、敌人移除列表、额外加速、ack-based 多人配置同步、读档兜底…）。
-  本分支是**受他委托**做的 beta 移植，**著作权归他**。
+- **[bwnotfound](https://github.com/bwnotfound)** —— 本 Mod 的**设计与全部原始实现**；本分支是**受他委托**
+  做的 beta 移植，**著作权归他**，发布 / 分发请以原仓库为准。
 
 **扩展层与工具**
 
 - [Alchyr](https://github.com/Alchyr) 的 [BaseLib](https://github.com/Alchyr/BaseLib-StS2) 与 [ModTemplate-StS2](https://github.com/Alchyr/ModTemplate-StS2)
-  —— 自定义 act / 本地化登记 / 配置系统全靠 BaseLib 的官方钩子；
-  "改不动就去 `BaseLib.Abstracts` 找钩子"是本移植贯穿始终的方法。
-- [Harmony](https://github.com/pardeike/Harmony) —— 所有运行时改造的基础设施。
+- [Harmony](https://github.com/pardeike/Harmony)
 - [GlitchedReme](https://github.com/GlitchedReme) 的 [中文 STS2 modding 教程](https://github.com/GlitchedReme/SlayTheSpire2ModdingTutorials)
-- 创意工坊模组 **Boss Gauntlet** 的作者 —— 合成节点（火堆/商店）的手法照搬自它。
+- 创意工坊模组 **Boss Gauntlet** 的作者 —— 合成节点（火堆 / 商店）手法照搬自它
 
 **兼容性互操作（本分支新增的致谢）**
 
-- **ritzukage** 的 **ActsFromThePast** 与 **RitsuLib** —— 它的 act / 精英 / BOSS 会被本 mod 第 4/5 层抽取；
-  它的自绘战斗背景（`TheBeyondBackground`）促使本移植放弃"自己造背景"，改为改写 `parentAct`
-  让**它自己的钩子照常生效**（踩坑指南 §3.17）。
-- **YUI 系列扩展（YUI Spire / Card Expansion）**、**Act 4 Heart** 等模组 ——
-  用于验证"与整幕模组共存"：本 mod 会在第 4 幕被别的模组占用时自动顺延为第 5/6 幕。
-- **皮肤 / 卡图 / 汉化类模组** —— 用于验证本地化与设置界面注入不打架。
+- **ritzukage** 的 **ActsFromThePast** 与 **RitsuLib** —— 它的 Act / 精英 / BOSS 会被本 Mod 抽取；
+  它的自绘战斗背景促使本移植改为"改写 `parentAct`、让**它自己的钩子照常生效**"
+- **YUI 系列扩展**、**Act 4 Heart** 等模组 —— 用于验证"与整幕模组共存"（第 4 幕被占用时自动顺延 5/6）
+- **皮肤 / 卡图 / 汉化类模组** —— 用于验证本地化与设置界面注入不打架
 
 **本分支**
 
-- [@Coll-ed](https://github.com/Coll-ed) —— beta v0.111.0 移植、第 4/5 幕重做、多模组共存改造、
-  全部排查与文档。**不新增任何第三方素材**，视觉均为程序化生成。
+- [@Coll-ed](https://github.com/Coll-ed) —— beta v0.111.0 移植、第 4/5 幕重制、多模组共存改造、排查与文档。
+  本分支**不新增任何第三方素材**，视觉均为程序化生成。
