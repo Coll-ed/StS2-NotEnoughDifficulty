@@ -39,6 +39,12 @@ namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 /// | `RunManagerLoadIntoLatestMapCoordPrefix` | 同名 | 读档落在合成节点上 |
 /// | `NRestSiteRoomOnProceedButtonReleasedPrefix` | 同名 | 离开火堆收尾 |
 /// | `NMerchantRoomHideScreenPrefix` | 同名 | 离开商店收尾 |
+///
+/// ## 本模组额外加的一道闸（BossGauntlet 没有）
+/// | 本文件 | 作用 |
+/// |---|---|
+/// | `NMapPointOnReleasePrefix` | **没进火堆也能进第二个 BOSS**：`OnRelease` 第一行就是 `if (!IsTravelable) return;`，
+/// 这里在它之前把第二个 BOSS 节点提成 `Travelable`（见 <see cref="SyntheticHearth.TryAllowSecondBossClick" />） |
 /// </summary>
 [HarmonyPatch]
 public static class BossGauntletStylePatches
@@ -239,6 +245,9 @@ public static class BossGauntletStylePatches
             }
 
             SyntheticHearth.RefreshSyntheticTravelability(__instance);
+
+            // ★ 兜底：没进火堆也要能进第二个 BOSS（见 SyntheticHearth.EnsureSecondBossReachable）
+            SyntheticHearth.EnsureSecondBossReachable(__instance);
         });
     }
 
@@ -264,7 +273,31 @@ public static class BossGauntletStylePatches
 
             // ★ act5 的卷云样式按楼层换（金光/血光流动是连续动画，不需要每次重挂）
             if (st?.Act is Act5Model) Act5VisualEffects.UpdatePatternForFloor(st.ActFloor);
+
+            // ★ 兜底：进火堆/商店再出来时原版算不出第二个 BOSS 可通行 ⇒ 这里每次开地图都补一次
+            SyntheticHearth.EnsureSecondBossReachable(__instance);
         });
+    }
+
+    // ============================================================
+    // 4c) 点击那一刻的硬拦截：没进火堆也能进第二个 BOSS（2026-09-22 用户要求）
+    //
+    //     `NMapPoint.OnRelease` 的 IL 第一行就是 `if (!IsTravelable) return;`
+    //     （原版：`IL_0001: call get_IsTravelable` → `IL_0006: brtrue` → 否则 `ret`），
+    //     所以在它执行之前把"第二个 BOSS 节点"提成 Travelable，这一击就不会被吞。
+    //
+    //     ⚠️ 方法名用字符串字面量：`OnRelease` 是 protected override sealed，`nameof` 取不到
+    //     （踩坑指南 §3.5 同源教训）。
+    // ============================================================
+
+    [HarmonyPatch(typeof(NMapPoint), "OnRelease")]
+    [HarmonyPrefix]
+    [HarmonyPriority(Priority.First)]
+    public static void NMapPointOnReleasePrefix(NMapPoint __instance)
+    {
+        if (!PatchScope.IsEnabled) return;
+        PatchScope.Run(nameof(NMapPointOnReleasePrefix),
+            () => SyntheticHearth.TryAllowSecondBossClick(__instance));
     }
 
     // ============================================================

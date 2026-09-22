@@ -357,6 +357,121 @@ internal static class SyntheticHearth
         }
     }
 
+    /// <summary>
+    ///     兜底拦截：**没进火堆也能进第二个 BOSS**（2026-09-22 用户要求）。
+    ///
+    /// ## 为什么必须有这道闸（原版 IL 实证）
+    /// <c>NMapScreen.RecalculateTravelability</c> 的双 BOSS 特判只认一种情况：
+    /// <code>
+    ///   V_0 = VisitedMapCoords[^1];                       // 最后一个已访问坐标
+    ///   if (_secondBossPointNode != null &amp;&amp; V_0 == _bossPointNode.Point.coord) {
+    ///       _secondBossPointNode.State = Travelable;      // ← 只有"当前正好站在第一个 BOSS 上"
+    ///       return;                                       //   才放行，且**直接 return**
+    ///   }
+    /// </code>
+    /// 也就是说：
+    /// <list type="number">
+    ///   <item><b>跳过火堆</b>（从第一个 BOSS 直接点第二个 BOSS）时靠这条特判 —— 一旦地图/连线/顺序
+    ///         有任何一处不对（别的 mod 改地图、注入失败、读档重建），第二个 BOSS 就停在
+    ///         <c>Untravelable</c> ⇒ 进不去 ⇒ **卡死在两个 BOSS 之间**；</item>
+    ///   <item><b>进了火堆再出来</b>时，"最后一个已访问坐标"是火堆的**网格外虚拟坐标**，
+    ///         特判不成立，只能落到 <c>MapTravel.GetTravelablePointsFrom(火堆点)</c>，
+    ///         而这个函数是给网格内节点设计的，**不保证**对网格外点给出结果 ⇒ 同样可能点不到第二个 BOSS。</item>
+    /// </list>
+    /// 所以这里不再指望原版：**只要双 BOSS 序列"进行中"（当前坐标 = 第一个 BOSS，或 = 我们插的任一
+    /// 合成节点），就把第二个 BOSS 显式置为 <c>Travelable</c>**。只加不删，原版本来放行的情况重复置一次，无副作用。
+    ///
+    /// 调用点：① 每次 <c>RecalculateTravelability</c> 之后；② 地图每次打开；
+    /// ③ <c>NMapPoint.OnRelease</c> 前缀（点击那一刻的硬拦截，见 <see cref="TryAllowSecondBossClick" />）。
+    /// </summary>
+    public static bool EnsureSecondBossReachable(NMapScreen screen)
+    {
+        try
+        {
+            var state = RunStateAccessor.GetCurrentState();
+            if (!IsBetweenBosses(state)) return false;
+
+            var node = Traverse.Create(screen).Field("_secondBossPointNode").GetValue<NBossMapPoint>();
+            if (node == null) return false;
+
+            return ForceTravelable(node, "序列进行中");
+        }
+        catch (Exception ex)
+        {
+            MainFile.Logger.Warn($"[Gauntlet] 第二个 BOSS 兜底失败: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    ///     点击那一刻的硬拦截（挂 <c>NMapPoint.OnRelease</c> 前缀）。
+    ///
+    /// <c>OnRelease</c> 的 IL 第一行就是 <c>if (!IsTravelable) return;</c> —— 只要在它执行之前把
+    /// "第二个 BOSS 节点"的状态提成 <c>Travelable</c>，这一击就不会被吞掉
+    /// （即便别的 mod / 别的时序把它翻回 <c>Untravelable</c>）。
+    /// </summary>
+    public static bool TryAllowSecondBossClick(NMapPoint? node)
+    {
+        try
+        {
+            if (node?.Point == null) return false;
+
+            var state = RunStateAccessor.GetCurrentState();
+            var second = state?.Map?.SecondBossMapPoint?.coord;
+            if (second == null) return false;
+            if (!IsBetweenBosses(state)) return false;
+            if (node.Point.coord != second.Value) return false;      // 只有"第二个 BOSS 节点"走这条
+
+            return ForceTravelable(node, "点击瞬间");
+        }
+        catch
+        {
+            return false;   // 兜底失败就当没发生，绝不影响原版点击流程
+        }
+    }
+
+    /// <summary>
+    ///     双 BOSS 序列是否"进行中"：当前坐标 = 第一个 BOSS，或 = 我们插的任一合成节点。
+    ///     只有在这个窗口里才做"没进火堆也放行"的兜底（其它时候一律不碰原版状态）。
+    /// </summary>
+    public static bool IsBetweenBosses(RunState? state)
+    {
+        try
+        {
+            var map = state?.Map;
+            if (map?.SecondBossMapPoint == null || map.BossMapPoint == null) return false;
+
+            var cur = state!.CurrentMapCoord;
+            if (cur == null) return false;
+            var c = cur.Value;
+
+            var boss = map.BossMapPoint.coord;
+            if (c.col == boss.col && c.row == boss.row) return true;      // 站在第一个 BOSS 上（常规路线）
+
+            // 站在合成节点（火堆/商店）上 —— 此时原版算不出第二个 BOSS 可通行，正是要兜底的场景
+            var count = Math.Max(_pendingRoomCount, RoomTypes.Count);
+            return count > 0 && GetRoomIndex(map, count, c) >= 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>把节点状态提成可点（已经可点就什么都不做）。</summary>
+    private static bool ForceTravelable(NMapPoint node, string why)
+    {
+        if (node.State == MapPointState.Travelable) return false;
+
+        var was = node.State;
+        node.State = MapPointState.Travelable;
+        InvokeInstanceNoArg(node, "RefreshState", "NMapPoint");
+
+        MainFile.Logger.Info(
+            $"[Gauntlet] 兜底放行：第二个 BOSS 节点由 {was} 提为 Travelable（{why}）—— 没进火堆也能进 BOSS");
+        return true;
+    }
+
     /// <summary>第一个 boss 奖励界面点"继续"时调用（BossGauntlet 在这里推进到合成房间）。</summary>
     public static void OnFirstBossRewardProceeded(RunState state)
     {
