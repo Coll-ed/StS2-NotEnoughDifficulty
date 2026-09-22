@@ -504,12 +504,42 @@ internal static class SyntheticHearth
         var index = GetRoomIndex(map, types.Count, coord);
         if (index < 0) return false;
 
-        var actFloor = coord.row + 1;
+        var actFloor = EntryFloor(map);
         MainFile.DebugLog(
-            $"[Gauntlet] 进入合成房间 index={index} coord=({coord.col},{coord.row}) type={types[index]}");
+            $"[Gauntlet] 进入合成房间 index={index} coord=({coord.col},{coord.row}) " +
+            $"type={types[index]} actFloor={actFloor}（虚拟行 {coord.row} 不可直接当层数）");
 
         result = rm.EnterMapPointInternal(actFloor, types[index], null, true);
         return result != null;
+    }
+
+    /// <summary>
+    ///     合成房间该用哪个"层数"（actFloor）。
+    ///
+    /// ## 为什么不能直接用 <c>coord.row + 1</c>（2026-09-23 修：act4 火堆进入即卡死）
+    /// 合成坐标是**网格外虚拟坐标**：<c>row = SecondBossMapPoint.row + 50</c>（见 <see cref="GetCoord" />），
+    /// 典型值 63~68。而 <c>RunManager.EnterMapPointInternal(actFloor, …)</c> 的内部实现
+    /// （IL 实证）第一件事就是：
+    /// <code>
+    ///   IL_006F: ldfld  &lt;EnterMapPointInternal&gt;d__192::actFloor
+    ///   IL_0074: callvirt RunState::set_ActFloor(Int32)      // ← 直接写进 run state
+    /// </code>
+    /// 于是进一次火堆，<c>RunState.ActFloor</c> 就被写成 64~68 —— 而 ActFloor 是**难度公式的输入**
+    /// （<see cref="RunProgress.GetHpMultiplier" />）以及原版其它按层逻辑的输入：
+    /// <list type="bullet">
+    ///   <item>修正前的公式（<c>1+floor*0.1*Y/100</c>）会把后面所有战斗的倍率抬到 1.06+；</item>
+    ///   <item>修正后的公式（<c>1+floor*0.1*Y</c>）会直接变成 <b>7 倍以上</b> —— 第二个 BOSS 瞬间不可打；</item>
+    ///   <item>act4/act5 还会被别的按层判定的 mod（进阶类）读到这个假层数。</item>
+    /// </list>
+    /// ⇒ 必须给一个**与原版同口径**的层数：用第二个 BOSS 节点的行号（它就是"火堆所在的那一层"），
+    /// 取不到时退回第一个 BOSS 的行号；<c>+1</c> 与原版 <c>point.coord.row + 1</c> 的算法一致。
+    /// </summary>
+    private static int EntryFloor(ActMap map)
+    {
+        var row = map.SecondBossMapPoint?.coord.row
+                  ?? map.BossMapPoint?.coord.row
+                  ?? 0;
+        return row + 1;
     }
 
     /// <summary>读档若停在合成节点上 → 恢复（返回 false 表示无需接管）。</summary>
@@ -526,7 +556,7 @@ internal static class SyntheticHearth
         if (index < 0) return false;
 
         MainFile.DebugLog($"[Gauntlet] 读档落在合成房间 index={index}，按原版流程恢复");
-        result = rm.EnterMapPointInternal(coord.row + 1, types[index], null, false);
+        result = rm.EnterMapPointInternal(EntryFloor(map), types[index], null, false);
         return result != null;
     }
 
