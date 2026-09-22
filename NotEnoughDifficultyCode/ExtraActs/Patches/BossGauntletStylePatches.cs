@@ -155,15 +155,31 @@ public static class BossGauntletStylePatches
 
         if (!PatchScope.IsEnabled) return;
         if (map == null) return;
-        if (ModCompat.SomeoneElsePatchesMapScreen("合成节点注入")) return;
+
+        // ★★ 这里**不能**"有人也 patch 了 SetMap ⇒ 整套放权"（2026-09-22 实际事故）。
+        //
+        //   `SetMap` 上我们做的事是**纯加法**：原方法（含所有其它 mod 的 postfix / IL hook）跑完之后，
+        //   往 `_points` 容器里多挂几个合成节点、写进 `_mapPointDictionary`、再补连线。
+        //   别的 mod 挂 postfix 或改 IL 都不会让这件事失效 —— Harmony 本来就允许多个 patch 共存。
+        //
+        //   反例（真实发生过）：创意工坊模组 Ascension100（3801607408）为"进阶 11 地图火焰特效"
+        //   挂了 `[HarmonyPatch(typeof(NMapScreen), "SetMap")]`（只 CallDeferred 一个纯视觉 Refresh）。
+        //   旧代码用 `SomeoneElsePatchesMapScreen` 一票否决 ⇒ **合成火堆的注入整个被跳过**，
+        //   而双 boss 本身还在（由 RunManager.GenerateMap 前缀那条无放权判定的路径补上），
+        //   于是现象就是用户报的「双BOSS中间火堆没有了」。
+        //
+        //   注：Ascension100 的后缀里 `MapFlames.Refresh` 是**延迟一帧**跑的，会遍历整棵树对
+        //   每个 NNormalMapPoint 挂火焰 —— 我们后注入的火堆节点也因此照样有火焰特效（实测更协调）。
+        ModCompat.NoteCoexistence("合成节点注入", NMapScreenSetMapMethod);
 
         PatchScope.Run(nameof(NMapScreenSetMapPostfix), () =>
         {
+            var st = RunStateAccessor.GetCurrentState();
+
             // act5：补上两个伪装 BOSS 节点（灵魂异鱼 / 知识恶魔）。
             // 它们用的是**我们自己的节点类**（图标跟着各自的 encounter 走），
             // 房间内容由 Act5EncounterPoolPatch 供给 —— 点节点后的流程全是原版的。
-            var state5 = RunStateAccessor.GetCurrentState();
-            if (state5?.Act is Act5Model)
+            if (st?.Act is Act5Model)
             {
                 var okMid = Act5MidBoss.InjectVisuals(__instance, map);
                 MainFile.DebugLog($"[Gauntlet] act5 伪装 BOSS 注入结果 = {okMid}");
@@ -175,18 +191,33 @@ public static class BossGauntletStylePatches
                 // 原版最终 BOSS 节点的贴图是在它自己的 _Ready 里挂的 ⇒ 延迟一帧再改色
                 var bossPointNode = Traverse.Create(__instance).Field("_bossPointNode").GetValue<NMapPoint>();
                 Callable.From(() => Act5VisualEffects.RecolorBossIcon(bossPointNode, myth)).CallDeferred();
+
+                // ★ 2026-09-22「叫醒」：这两行以前**丢了** —— AttachMapShimmer / UpdatePatternForFloor
+                //   在整棵源码树里零调用点（孤儿方法），所以"纹路金光流动 + 每次爬楼换卷云样式"
+                //   从来没生效过（只有 BOSS 图标改色是活的）。挂材质是这两件事的唯一前提：
+                //   不挂 rect.Material，后面所有 SetShaderParameter 都是往空气里改。
+                Act5VisualEffects.AttachMapShimmer(__instance, myth);
+                Act5VisualEffects.UpdatePatternForFloor(st.ActFloor);
                 return;
             }
 
             var ok = SyntheticHearth.InjectVisuals(__instance, map);
             MainFile.DebugLog($"[Gauntlet] 注入结果 = {ok}");
 
-            // ★ act4 也必须挂着色器材质！否则后面改 tint / pattern_seed 的 uniform
-            //   全是往空气里改 —— 实测（用户三连反馈）：act4 不换卷云样式、纹路不按层变色，
-            //   根因就是这里从来没挂过材质（attach 只在 act5 分支里调了）。
-
+            // ★ 2026-09-22「叫醒」：act4 地图节点图标"黄色 → 淡紫"（用户口径：问号/商店/火堆/精英/BOSS 的
+            //   底图黄色都换成淡紫）。Act4MapIconRecolor.Schedule 同样是孤儿方法（零调用点），一并接回；
+            //   它内部自己 CallDeferred（节点贴图是在各自 _Ready 里挂的，必须等一帧）。
+            //
+            //   注：act4 的**纹路**变色走另一条路（Act4MapStripeTint 状态 + ActVisualTheme.ForAct4 重绘底图，
+            //   因为实测三个 rect 的 Material 默认是 null、改 uniform 无效），两条互不干扰。
+            if (st?.Act is Act4Model) Act4MapIconRecolor.Schedule(__instance);
         });
     }
+
+    /// <summary>
+    ///     <c>NMapScreen.SetMap</c> 的 MethodInfo（<see cref="ModCompat.NoteCoexistence" /> 用来查谁也在 patch）。
+    /// </summary>
+    private static readonly MethodBase? NMapScreenSetMapMethod = ModCompat.MapScreenTarget;
 
     // ============================================================
     // 4) 可通行性重算之后：把合成节点补成可点
@@ -230,6 +261,9 @@ public static class BossGauntletStylePatches
             // 每次回到地图 = 又爬了一层 ⇒ 换一套卷云样式；同时把层色恢复成紫
             var st = RunStateAccessor.GetCurrentState();
             if (st?.Act is Act4Model or Act5Model) Act4EliteBackgroundByLayerPatch.ApplyTintForCurrentRoom(st);
+
+            // ★ act5 的卷云样式按楼层换（金光/血光流动是连续动画，不需要每次重挂）
+            if (st?.Act is Act5Model) Act5VisualEffects.UpdatePatternForFloor(st.ActFloor);
         });
     }
 

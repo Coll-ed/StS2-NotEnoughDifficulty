@@ -92,10 +92,18 @@ internal static class SyntheticHearth
         try
         {
             var state = RunStateAccessor.GetCurrentState();
-            if (state == null) return false;
+            if (state == null)
+            {
+                MainFile.Logger.Warn("[SynthHearth] 取不到 RunState（地图界面已建好但 run state 读不到），跳过火堆注入");
+                return false;
+            }
 
             var actIdx = RunProgress.GetActIndex(state);
-            if (actIdx < 1) return false;
+            if (actIdx < 1)
+            {
+                MainFile.DebugLog($"[SynthHearth] act 认不出层号（act={state.Act?.Id?.Entry}），跳过火堆注入");
+                return false;
+            }
 
             // 只对"启用了双 boss 且真的有第二个 boss"的层动手。
             //
@@ -113,9 +121,27 @@ internal static class SyntheticHearth
             // ★ act5（本模组的传奇/神话幕）显式排除：那一幕的连战由 Act5BossSequence 自己发房推进，
             //   既没有 SecondBossMapPoint，也不该在两个 BOSS 之间夹火堆。
             //   判据用**类型**而不是层号 —— 第 4 幕被别的模组占用而顺延时，它排在第 6 幕，层号会变。
-            if (state?.Act is Act5Model) return false;
-            if (map.SecondBossMapPoint == null) return false;
-            if (!DoubleBossConfigPatch.IsDoubleBossEnabled(ActLayout.ConfigLayerOf(state?.Act, state))) return false;
+            if (state?.Act is Act5Model)
+            {
+                MainFile.DebugLog("[SynthHearth] act5：连战幕的布局自己控制，不注入合成火堆");
+                return false;
+            }
+
+            if (map.SecondBossMapPoint == null)
+            {
+                MainFile.DebugLog(
+                    $"[SynthHearth] 第 {actIdx} 层地图没有第二个 boss 点（secondBoss=无）⇒ 不存在" +
+                    "\"两个 boss 中间\"，不需要合成火堆");
+                return false;
+            }
+
+            var cfgLayer = ActLayout.ConfigLayerOf(state?.Act, state);
+            if (!DoubleBossConfigPatch.IsDoubleBossEnabled(cfgLayer))
+            {
+                MainFile.DebugLog(
+                    $"[SynthHearth] 第 {actIdx} 层（配置槽位 {cfgLayer}）的双 boss 开关是关的 ⇒ 不注入合成火堆");
+                return false;
+            }
 
             var bossNode = Traverse.Create(screen).Field("_bossPointNode").GetValue<NBossMapPoint>();
             var secondNode = Traverse.Create(screen).Field("_secondBossPointNode").GetValue<NBossMapPoint>();
@@ -142,6 +168,12 @@ internal static class SyntheticHearth
             var end = secondNode.Position + secondNode.Size * 0.5f;
 
             var types = RoomTypes;
+            if (types.Count == 0)
+            {
+                MainFile.DebugLog("[SynthHearth] 火堆与商店两个开关都关着 ⇒ 双 boss 中间什么都不插");
+                return false;
+            }
+
             var points = new List<MapPoint>();
             var nodes = new List<NNormalMapPoint>();
 
@@ -191,9 +223,13 @@ internal static class SyntheticHearth
                 MainFile.Logger.Error($"[SynthHearth] 画连线失败（火堆已注入，可能只是没线）: {ex}");
             }
 
-            MainFile.DebugLog(
-                $"[SynthHearth] 已在第 {actIdx} 层注入 {points.Count} 个合成火堆" +
-                $"（坐标 {string.Join(", ", points.Select(p => $"({p.coord.col},{p.coord.row})"))}）");
+            // ★ 这条用 Info（默认就能在日志里看到，不必开 DebugLogging）——
+            //   它是"合成火堆到底插进去了没有"的唯一权威证据。上一轮事故里正因为
+            //   成功/跳过**都只走 DebugLog**，日志里一个字都没有，才需要从头反推根因。
+            MainFile.Logger.Info(
+                $"[SynthHearth] 已在第 {actIdx} 层注入 {points.Count} 个合成节点" +
+                $"（{string.Join(" → ", points.Select(p => p.PointType.ToString()))}，" +
+                $"坐标 {string.Join(", ", points.Select(p => $"({p.coord.col},{p.coord.row})"))}）");
 
             // 5) 重算可通行性（**关键**）
             // 原版的重算发生在 SetMap 内部、**早于**本 postfix，所以刚接上的连通关系

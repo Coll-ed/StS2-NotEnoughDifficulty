@@ -99,6 +99,83 @@ Harmony 靠**参数名**注入（`__instance` / `__result` / `___fieldName` / �
 探针工程走了 incremental 复用，实际**没有重新编译**某个文件，于是我宣布"源码对当前 beta 0 错 0 警、兼容"。
 清空产物重建后立刻暴露真实编译错误。**删掉 `bin/`、`obj/`、`.godot/` 再构建。**
 
+### 0.5 ⚠️⚠️ 学会拆分：新机制十有八九只是**原版效果的组合**
+
+**本项目最值钱的一次醒悟**（狂躁机制，2026-09-17，**用户点破**）：
+
+> 用户："**不对啊，我为什么要搞广播这种这么复杂呢？狂躁：回合结束时在手牌内自动打出。
+> 像战鼓这张牌，被消耗额外获得 2 点能量，我直接狂躁里面内置一个这样的标签这样就行了呀：
+> 当狂躁标签的牌被消耗时，返回到抽牌堆第一位。
+> 像奇巧这个标签，也是被弃牌触发，我一样跟着内置一个奇巧的检测：
+> 当狂躁标签的牌被丢弃时，返回到抽牌堆第一位。**"
+
+当时我已经准备开写一套"回合结束广播 + 遍历所有牌 + 玩家是否打出过标记"的补丁层。
+**全是多余的。**
+
+#### 拆分四步法
+
+**第 1 步：把机制写成"什么事件触发"的清单**（写"什么时候发生"，不是"我要做什么"）
+
+```
+狂躁：
+  IF 玩家选中打出         → 进弃牌堆      ← 原版通用行为，一行都不用写
+  ELIF 回合结束 / 仍在手牌 → 自动打出
+  ELIF 被丢弃             → 回抽牌堆第一位
+  ELIF 被消耗             → 回抽牌堆第一位
+```
+
+**第 2 步：每个事件去原版找"谁已经在处理它"** —— 原版**必然**处理过，
+因为它自己就有关键词/卡牌在干同样的事。
+
+| 我需要的触发 | 原版谁在做 | 它 override 了什么 |
+|---|---|---|
+| 回合结束仍在手牌 | 虚无 Ethereal ＋ 所有 `HasTurnEndInHandEffect` 的牌 | `CardModel.OnTurnEndInHand` |
+| **被丢弃**时触发 | **奇巧 Sly** | `AbstractModel.AfterCardDiscarded` |
+| **被消耗**时触发 | **战鼓 `DrumOfBattle`** | `AbstractModel.AfterCardExhausted` |
+
+**第 3 步：读那张原版牌的源码，抄它的挂点**（＝ 第 0 章的"去读程序集"）
+
+```csharp
+// CardCmd.DiscardAndDraw（反编译真身）—— 奇巧就挂在 Hook.AfterCardDiscarded
+if (card.IsSlyThisTurn) slyCards.Add(card);          // ← 奇巧检测
+await CardPileCmd.Add(card, discardPile);
+await Hook.AfterCardDiscarded(combatState, choiceContext, card);   // ← 广播点
+// …循环结束后：await AutoPlay(choiceContext, item, null, AutoPlayType.SlyDiscard);
+
+// CardCmd.Exhaust —— 战鼓就挂在 Hook.AfterCardExhausted
+await CardPileCmd.Add(card, PileType.Exhaust, CardPilePosition.Bottom, null, skipVisuals);
+await Hook.AfterCardExhausted(combatState, choiceContext, card, causedByEthereal);
+
+// 战鼓原文（CardModel 子类，没有一行 Harmony）
+public override async Task AfterCardExhausted(PlayerChoiceContext choiceContext, CardModel card, bool causedByEthereal)
+{ if (card == this && base.CombatState != null) { /* 加 2 点能量 */ } }
+```
+
+**⇒ 关键认知：`CardModel` 本身就是 hook listener**（`AbstractModel` 是监听者基类，
+`Hook.IterateCombatHookListeners` 遍历的就是这些 model）。
+`public override` 那几个虚方法，**卡牌自己就能收到广播** ——
+**不需要写 Harmony patch，更不需要自己造一套广播。**
+
+**第 4 步：确认"误伤面"** —— 挂上之后必须问：**这个挂点会不会被我不要的路径触发？**
+
+> 狂躁的答案：不会。打出的牌进弃牌堆走 `CardPileCmd.Add` + result pile，**不经过**
+> `CardCmd.DiscardAndDraw`（`CardCmd.Discard` 只是它 `cardsToDraw = 0` 的转发）
+> ⇒ 主动打出**不会**触发 `AfterCardDiscarded`。
+
+#### 反例：不拆分的代价（本项目真实弯路，最后**全废**）
+
+| 弯路 | 为什么错 |
+|---|---|
+| 给 `CardPileCmd.Add` 挂**全路径 postfix** | `Add` 是 async，postfix 拿到的 Task 还没跑完，`!IsCompletedSuccessfully` **恒为真** ⇒ 从未生效 |
+| 自己写"回合结束广播"，遍历所有牌 | 原版 `HasTurnEndInHandEffect` 门槛已经做完了这件事 |
+| `_frenzyRound` + `_dealtDamage` 标记栈 | 自造状态机维护"这一趟是不是狂躁" —— 用户直接驳回："*逻辑很简单的事情全被你搞复杂！？*" |
+| 在 `OnTurnEndInHand` 里查 `Pile?.Type` 判"在不在手牌" | 不在手牌的牌**根本进不了** `turnEndCards`，回调压根不触发 ⇒ 分支永远走不到（实机日志实锤：该分支一次都没出现过） |
+
+#### 一句话记牢
+
+> **先拆"什么事件触发"，再去原版找那个事件已经在哪处理 —— 十有八九，原版已经有一张牌
+> 或一个关键词干着同样的事。照着它 override 就行，别自己造轮子。**
+
 ---
 
 ## 第 1 章　构建环境
@@ -446,6 +523,62 @@ RoomType.Boss            → RoomSet.NextBossEncounter     // 直接返回 _boss
 **绝不能**放进 `GenerateAllEncounters` —— 那样第二次 run 也不会重算。
 放到每次 run / 每层都会跑的地方（如 `RunManager.GenerateRooms` postfix）。
 
+### 4.10 音频：**"按角色"的槽位只有 6 个，格挡音不在其中**
+
+**这是 2026-09-22 被用户抓出来的坑**（原话：*"银龙的声音导致了其他角色的技能牌也出现了变调"*）。
+
+`CharacterModel` 上**能按角色覆盖的音效槽位一共就这些**（`_api\sts2.api.txt` 实据）：
+
+```
+CharacterSelectSfx / AttackSfx / CastSfx / PowerUpSfx / DeathSfx / CharacterTransitionSfx
+```
+
+**没有"格挡音"槽位。** 格挡音是硬编码的 —— 反编译 `CreatureCmd.GainBlock`：
+
+```csharp
+public static async Task<decimal> GainBlock(Creature creature, decimal amount, ValueProp props, CardPlay? cardPlay, bool fast = false)
+{
+    ...
+    await Hook.BeforeBlockGained(combatState, creature, amount, props, cardPlay?.Card);
+    modifiedAmount = Hook.ModifyBlock(combatState, creature, modifiedAmount, props, cardPlay?.Card, cardPlay, out ...);
+    await Hook.AfterModifyingBlockAmount(combatState, modifiedAmount, cardPlay?.Card, cardPlay, modifiers);
+    if (modifiedAmount > 0m)
+    {
+        SfxCmd.Play("event:/sfx/block_gain");     // ← 硬编码 ldstr：所有角色 + 敌人共用同一个事件
+        VfxCmd.PlayOnCreatureCenter(creature, "vfx/vfx_block");
+        ...
+    }
+    await Hook.AfterBlockGained(combatState, creature, modifiedAmount, props, cardPlay?.Card);
+}
+```
+
+两条硬结论：
+
+1. **`block_gain` / `block_break` / `block_hit` 是没有角色前缀的全局事件**
+   （对比 `event:/sfx/characters/{id}/{id}_attack` 那一套）
+   ⇒ 在播放层无脑替换 = **全局改动**，别的角色（连敌人）一起变。
+2. **音效在 `Hook.AfterBlockGained` 之前就播了** ⇒ 想用钩子"拦下来"是拦不住的，
+   只能在播放层（`SfxCmd.Play` / `NAudioManager.PlayOneShot`）或 `GainBlock` 本身动手。
+
+**配套的两个坑**：
+
+- **变调会叠两次**：如果离线把音频重采样成 ×0.85（低沉）再在播放时套 `PitchScale = 1.35`，
+  净效果是 **×1.1475 —— 比原版还高**，把"低沉"完全抵消还倒过来。
+  **凡是已经烘进文件的变调，播放时必须走原速**（本项目放在 `OrcaAudio.PitchFor` 白名单里）。
+- **别用静态 bool 缓存"现在玩的是不是奥卡"**：程序集常驻进程，
+  "同一个进程里打完奥卡再开别的角色"会让标志**过期**⇒ 泄漏又回来了。**每次现查**。
+
+**静态上下文里怎么拿本地玩家**（`NAudioManager.PlayOneShot` 这种静态补丁里没有 `Player` 参数）：
+
+```csharp
+var players = RunManager.Instance?.DebugOnlyGetState()?.Players;   // RunState.Players : IReadOnlyList<Player>
+bool isOrca = players != null && LocalContext.GetMe(players)?.Character is Orca;
+```
+
+- `RunManager.State` 是 **private**，公开出来的取值方法叫 `DebugOnlyGetState()`
+  —— 反编译实据：它本体就是 `return State;`，纯取值、无副作用，只是名字带 Debug。
+- 失败一律 **返回 false**（退回原版）—— 宁可不换，也不误伤别的角色。
+
 ---
 
 ## 第 5 章　⚠️ 实例身份：一个反复咬人的坑
@@ -681,6 +814,57 @@ ModCompat.SomeoneElsePatchesRoomGeneration("双 boss 分配")   // -> true 表�
 1. 放权日志必须足够显眼（列出 owner 名），便于一眼判定；
 2. 关键功能提供"强制启用"的配置开关；
 3. 只对**真正会被覆盖**的点放权，不要无脑全放。
+
+### 8.6 ⚠️⚠️ 8.5 预警的实例："双BOSS中间火堆没有了"（2026-09-22）
+
+**现象**：装了创意工坊模组 **Ascension100**（Steam `3801607408`）之后，第一层地图上两个 BOSS
+之间那个合成火堆**直接消失**了（双 boss 本身还在，所以看起来像"火堆功能被删了"）。
+
+**取证链（每一环都有实据，别跳步）**：
+1. 玩家的游戏日志里 `[SynthHearth]` **0 次命中** —— 但 `DebugLogging` 默认关，所以"没日志"什么都不能证明；
+2. 把当天日志与前几天对比：`Ascension100` 在 09-19、09-21 的日志里 **0 命中**，09-22 的日志里 14~15 命中
+   ⇒ 它是 09-21 23:20（workshop 目录创建时间）**新装/新更新**的，时间点与 bug 出现完全吻合；
+3. 用本项目 `_tools\Decomp` 反编译 `Ascension100.dll`：它 `PatchAll(assembly)`，其中
+   `Ascension100.Ascension11.MapRefreshPatch` 是 **`[HarmonyPatch(typeof(NMapScreen), "SetMap")]`**
+   （只为"进阶 11 的地图火焰特效"挂一个纯视觉 postfix）；同类里还有
+   `[HarmonyPatch(typeof(RunManager), "GenerateRooms")]`（进阶 18 的"第二幕双 boss"）；
+4. 我们的 `NMapScreenSetMapPostfix` 开头有一句
+   `if (ModCompat.SomeoneElsePatchesMapScreen("合成节点注入")) return;`
+   ⇒ **整块注入（合成火堆 + act5 伪装 BOSS 节点）被一票否决**。而双 boss 还在，是因为
+   `RunManager.GenerateMap` 前缀那条补救路径**没有**放权判定，它在建图前把第二 boss 补上了。
+
+**结论（写进代码注释了）——把接缝分成"放权"与"共存"两类**：
+
+| 接缝性质 | 判据 | 做法 |
+|---|---|---|
+| **我们只做加法**（往容器里多挂节点、多注册内容、只读诊断） | 别人的 patch 改的都是"同一个方法的别的事" | **共存**：只记一条 Info 日志列出 owner，**继续执行** |
+| **我们会覆盖同一个事实**（同一个 act 的第二 boss、同一个池子的内容） | 双方都在写同一个字段/同一个列表 | 才放权；且必须先看对方是否已经自带"已存在就跳过"的礼让（8.4 选择兼容） |
+
+**日志级别的硬要求**：放权/共存的判定**必须用 `Logger.Warn`/`Info`**，不能用"默认关"的调试日志
+——这次正因为成功与跳过都只走 `DebugLog`，日志里一个字都没有，现象看起来像"代码没写"。
+反过来，**关键功能的成功路径也应该用 Info 打一条**（"已在第 N 层注入 1 个合成节点（RestSite…）"），
+让玩家不开调试也能一眼确认功能到底有没有生效。
+
+**顺带记下的两个反例事实**（以后别再踩）：
+- `Harmony.GetPatchInfo` 看到的是"**有人挂了 patch**"，**不是**"有人做了和你一样的事"；
+  Ascension100 的那个 postfix 甚至在**延迟一帧**才跑，和我们后注入的节点完全不冲突
+  （它遍历整棵树给 `NNormalMapPoint` 挂火焰，我们新插的火堆节点照样有火焰）。
+- 同一类事故还有第二个受害者：`RunManager.GenerateRooms` 上的放权会让**按层双 boss 开关整体失效**
+  （日志 `[ModCompat] 双 boss 分配: … RunManager.GenerateRooms [Ascension100] —— 放权跳过`）。
+  它和 Ascension100 的进阶 18 **其实是礼让型**的（双方都 `if (act.HasSecondBoss) 跳过`），
+  放权反而两边都不做——这正是 8.5 说的"放权条件太宽"。
+
+**当日处置（可作为模板抄）**：
+
+1. `SetMap`（我们只做加法）→ 改**共存**：`ModCompat.NoteCoexistence(...)`，记一条 Info 后照常执行；
+2. `GenerateRooms`（双方都在写"这一层有没有第二 boss"）→ 先确认对方是否礼让，确认了就**也改共存**，
+   并把**破坏性动作收窄**：原来 `foreach (act) if (act != target) 清空第二 boss` 会连别人的安排一起删，
+   改成"只清基础游戏误加在**最后一幕**上的那个，且只碰本模组自己的追加幕"；
+3. `HasCompetingMod`（仍在用的放权点）日志从"默认关的 DebugLog"升级成 `Logger.Warn` 且每个目标只报一次；
+4. 关键功能的**成功路径**也补一条 `Info`（例：`[SynthHearth] 已在第 N 层注入 1 个合成节点（RestSite，…）`）。
+
+> 判据一句话：**别人的 patch 改的是"同一个方法的别的事" ⇒ 共存；改的是"同一个事实" ⇒ 才谈放权，
+> 且必须先看对方有没有"已存在就跳过"的礼让。**
 
 ---
 
@@ -1551,6 +1735,40 @@ public static bool Prefix(MapCoord coord)
 
 ---
 
+### 3.23 ⚠️ 同名**重载**不给参数类型 ⇒ `Ambiguous match` ⇒ 整个 patch 类被跳过（2026-09-22 修）
+
+`[HarmonyPatch(typeof(CombatManager), nameof(CombatManager.AfterCreatureAdded))]` 只写了**方法名**，
+而这个方法有**两个重载**：
+
+```
+TYPE MegaCrit.Sts2.Core.Combat.CombatManager
+  METHOD AfterCreatureAdded(Creature creature)                 ret=Task  vis=public   （实例）
+  METHOD AfterCreatureAdded(Creature creature, CombatState s)  ret=Task  vis=private static
+```
+
+Harmony 在挂 patch 时按 `声明类型 + 方法名` 查，命中两条 ⇒ 抛
+`HarmonyException: Ambiguous match for HarmonyMethod[(class=…CombatManager, methodname=AfterCreatureAdded, …)]`。
+
+**为什么"看起来没事"**：本项目是**逐类隔离 patch**（§3.2）——失败的那个类只记一行
+`Patch class … failed (skipped)`，其余 patch 照常工作。后果是那个"双重保险"补丁**每天启动都静默失效**，
+5 份游戏日志里都躺着同一行 ERROR，但没人注意（因为功能表面正常）。
+
+**修法**（三种，按适用性排序）：
+```csharp
+// ① 属性里给参数类型（最省事，编译期就能校验 Type 存在）
+[HarmonyPatch(typeof(CombatManager), nameof(CombatManager.AfterCreatureAdded), new[] { typeof(Creature) })]
+
+// ② 用 AccessTools 自己解析再 ManualPatch
+var mi = AccessTools.Method(typeof(CombatManager), "AfterCreatureAdded", new[] { typeof(Creature) });
+
+// ③ 多个重载全都要 patch ⇒ [HarmonyPatch] + [HarmonyTargetMethods]
+```
+
+**顺带的教训**：`grep 'failed (skipped)' %APPDATA%\SlayTheSpire2\logs\godot.log` 应该是每次实机回归的**第一条命令**
+——它一秒钟就能把"静默失效的 patch"全列出来（本项目当时正好捞到这一条）。
+
+---
+
 ## 第 13 章　皮肤 Mod：三条路线、动画契约与资源覆盖
 
 > 本章全部结论来自**反编译 + 实测对照**：`CharacterSkinManager.dll`（奥卡皮肤用的运行时换装器，
@@ -1688,6 +1906,20 @@ ERROR: System.NullReferenceException
 **故障 B：残血静止不动** —— 13.4 的名字缺失 + "只警告不切换"。
 
 **故障 C：外观串台** —— 13.2 的路径撞车。
+
+**故障 D：阵亡结算界面上不是自己选的皮肤**（"死亡动画变成板甲了"）
+结算界面 `NGameOverScreen.MoveCreaturesToDifferentLayerAndDisableUi` 按"当前在哪个房间"分三路取外观：
+战斗房还在 → 复用 `NCombatRoom.CreatureNodes[].Visuals`（已换过皮）；商店房 → 复用 `NMerchantRoom.PlayerVisuals`；
+**其它（战斗房已拆掉，例如战斗中被打死、回结算时房间已销毁）** → `player.Creature.CreateVisuals()`
+**现造一份新外观**，再 `SpineAnimation.SetAnimation("die", loop: false)`。
+第三路的骨架来自 `CharacterModel.VisualsPath` 场景里烘焙的 ext_resource，也就是**原版路径**
+`res://animations/characters/ironclad/ironclad_skel_data.tres` —— 而资源覆盖式皮肤（板甲）正是占用这条路径的，
+于是结算界面显示成**那套覆盖皮肤**（没装覆盖皮肤时则退回原版角色）。皮肤管理器只给战斗中的
+`NCreature._Ready` / 篝火 / 商店 / 选人界面打了补丁，结算界面没人管 ⇒ 只有它露馅。
+**修法**：在该方法后处理新建的那批 `NCreatureVisuals` —— 用 `SpineBody.SetSkeletonDataRes(...)`
+套上"当前选中皮肤"的 battle 骨架（选择结果透过反射问皮肤管理器的注册表），再按原版意图播 `die`
+（骨架没有 `die` 就退 `idle_loop`）。**注意判据要用 `NCombatRoom.Instance == null`**：
+战斗房还在时那批节点是玩家+敌人的混排，不能按玩家顺序乱套。
 
 **取证工具链**（本项目已沉淀，见第 10 章）：
 | 目的 | 工具 |
