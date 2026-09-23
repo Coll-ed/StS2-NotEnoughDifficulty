@@ -125,6 +125,37 @@ public static class BossGauntletStylePatches
                 }
             }
 
+            // ★ 不变量兜底（2026-09-23）：同一层的第二个 boss **绝不能等于第一个**，
+            //   否则第二场就是"再打一遍第一个 BOSS"（用户实测：act4 连续两场 KNOWLEDGE_DEMON_BOSS）。
+            //   这里在建图前做一次最终校验：撞了就换池里第一个别的；池里没有别的才只能重复（并 Warn）。
+            if (act != null && act.HasSecondBoss)
+            {
+                var firstId = act.BossEncounter?.Id?.Entry;
+                var secondId = act.SecondBossEncounter?.Id?.Entry;
+
+                if (firstId != null && string.Equals(firstId, secondId, StringComparison.Ordinal))
+                {
+                    var alt = (act.AllBossEncounters ?? Enumerable.Empty<MegaCrit.Sts2.Core.Models.EncounterModel>())
+                        .Where(b => b?.Id?.Entry is { } id && id != firstId)
+                        .OrderBy(b => b.Id.Entry, StringComparer.Ordinal)
+                        .ToList();
+
+                    if (alt.Count > 0)
+                    {
+                        act.SetSecondBossEncounter(alt[0]);
+                        MainFile.Logger.Warn(
+                            $"[DoubleBoss] 第 {actIdx} 层的第二 boss 与首个相同（'{firstId}'）" +
+                            $"⇒ 建图前改设为 '{alt[0].Id.Entry}'（否则第二个 BOSS 会重复第一个）");
+                    }
+                    else
+                    {
+                        MainFile.Logger.Warn(
+                            $"[DoubleBoss] 第 {actIdx} 层的第二 boss 与首个相同（'{firstId}'），" +
+                            "且该层池里没有别的候选 ⇒ 只能重复");
+                    }
+                }
+            }
+
             // ★ act5：第二 boss 槽位的清空已由 ActBlueprint 在黑屏内做好（见 Core/ActBlueprint.cs）。
             //   这里只保留诊断。
             if (act is Act5Model)
@@ -374,6 +405,10 @@ public static class BossGauntletStylePatches
     public static bool RunManagerEnterMapCoordPrefix(RunManager __instance, MapCoord coord, ref Task __result)
     {
         if (!PatchScope.IsEnabled) return true;
+
+        // 登记"正要进哪个坐标"：SecondBossEncounterPullPatch 靠它判断这一场是不是第二个 BOSS 节点
+        // （原版 PullNextEncounter(Boss) 只会给 RoomSet 里那个固定 boss ⇒ 第二场会重复第一场）。
+        SecondBossEntry.RecordEnteringCoord(coord);
 
         Task? takeover = null;
         var handled = PatchScope.Run(nameof(RunManagerEnterMapCoordPrefix), () =>
