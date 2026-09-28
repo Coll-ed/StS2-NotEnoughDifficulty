@@ -74,6 +74,19 @@ public static class BossGauntletStylePatches
                 $"商店={NotEnoughDifficultyConfig.InterBossShop} | " +
                 $"本模组幕位=第 {ActLayout.OurFirstLayer}/{ActLayout.OurSecondLayer} 幕" +
                 $"（第 4 幕占用者：{ActLayout.ForeignAct4?.Id?.Entry ?? "无"}）");
+
+            // ★ Info 级：把**难度强化**的生效口径逐层打出来 —— 玩家反馈"强化没有正确启用、
+            //   血量不变"时，这一行就能立刻区分"开关没开（含设置界面没保存）"与"开关开了却没生效"。
+            MainFile.Logger.Info(
+                "[难度] 本局强化开关: " +
+                $"act1={NotEnoughDifficultyConfig.Act1_ExtraScaling} " +
+                $"act2={NotEnoughDifficultyConfig.Act2_ExtraScaling} " +
+                $"act3={NotEnoughDifficultyConfig.Act3_ExtraScaling} " +
+                $"act4(本模组第1幕)={NotEnoughDifficultyConfig.Act4_ExtraScaling} " +
+                $"act5(本模组第2幕)={NotEnoughDifficultyConfig.Act5_ExtraScaling} " +
+                $"| 血量系数Y={NotEnoughDifficultyConfig.HpScaleFactor} " +
+                $"攻击系数X={NotEnoughDifficultyConfig.DmgScaleFactor} " +
+                "（血量 = 1 + ActFloor×0.1×Y；攻击 = 1 + ActFloor×0.05×X）");
         });
     }
 
