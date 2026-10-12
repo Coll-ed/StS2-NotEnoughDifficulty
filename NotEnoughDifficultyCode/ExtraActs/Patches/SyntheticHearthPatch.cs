@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
@@ -43,6 +44,51 @@ internal static class SyntheticHearth
     private const int CoordOffset = 50;
 
     /// <summary>
+    ///     我们注入到各地图界面上的合成节点（视觉节点 + 数据点 + 坐标）—— **SetMap 之前必须清掉**。
+    ///
+    /// ## 为什么必须记账（2026-10-12 实测事故，用户："双 BOSS 的火堆又消失了"）
+    /// 新装的创意工坊模组 <c>STS2_Things</c> 有个"十字路口层"（<c>NCrossroadLayer.OnChanged</c>），
+    /// 它会在同一幕里**再调一次** <c>NMapScreen.SetMap</c> 重建地图。原版重建时会把
+    /// <c>_mapPointDictionary</c> 换成新地图的点，而 <c>_points</c> 容器里**还留着**我们上一轮挂的节点
+    /// ⇒ 原版 <c>DrawPaths</c> 遍历子节点查字典时抛：
+    /// <code>
+    /// InvalidOperationException: Map point child with coord MapCoord (53, 67) is not in the map point dictionary!
+    ///   at NMapScreen.DrawPaths_Patch1(NMapScreen this, NMapPoint mapPointNode, MapPoint mapPoint)
+    ///   at NMapScreen.SetMap_Patch5(NMapScreen this, ActMap map, UInt64 seed, Boolean clearDrawings)
+    ///   at STS2_Things.Map.NCrossroadLayer.&lt;OnChanged&gt;b__20_0()
+    /// </code>
+    /// ⇒ 整次 SetMap 中断 ⇒ 火堆与"第一个 BOSS → 火堆 → 第二个 BOSS"的连线都画不出来
+    /// （就是玩家看到的"火堆消失"）。
+    ///
+    /// 所以：**每次 SetMap 的前缀里先把自己上一轮的节点摘干净**，postfix 再重新注入（见
+    /// <see cref="CleanupInjected" />）。记账用 <see cref="ConditionalWeakTable{TKey,TValue}" />，
+    /// 随地图界面一起被回收，不会泄漏。
+    /// </summary>
+    private static readonly ConditionalWeakTable<NMapScreen, List<InjectedNode>> InjectedNodes = new();
+
+    /// <summary>
+    ///     已经串过链的 <see cref="ActMap" /> 实例。
+    ///     同一个地图实例被 <c>SetMap</c> 走两次时（别的 mod 重建视觉、地图数据仍是同一张），
+    ///     再 <c>AddChildPoint</c> 一次会在链上留下第二个合成点 ⇒ 幽灵节点。
+    /// </summary>
+    private static readonly ConditionalWeakTable<ActMap, object> ChainedMaps = new();
+
+    /// <summary>我们注入的一个合成节点（坐标 / 数据点 / 视觉节点）。</summary>
+    private sealed class InjectedNode
+    {
+        public InjectedNode(MapCoord coord, MapPoint point, NNormalMapPoint node)
+        {
+            Coord = coord;
+            Point = point;
+            Node = node;
+        }
+
+        public MapCoord Coord { get; }
+        public MapPoint Point { get; }
+        public NNormalMapPoint Node { get; }
+    }
+
+    /// <summary>
     ///     本层要插的合成房间类型序列（**从配置读，不写死**）。
     ///     顺序：火堆 → 商店（先休息再购物），与 Boss Gauntlet 的口径一致。
     ///     两个开关都关时不插任何东西（玩家可以选择"双 boss 但中间不休息"）。
@@ -81,6 +127,75 @@ internal static class SyntheticHearth
         if (map?.SecondBossMapPoint == null) return false;
         if (_pendingRoomCount <= 0) return false;
         return GetRoomIndex(map, _pendingRoomCount, coord) >= 0;
+    }
+
+    /// <summary>
+    ///     <c>NMapScreen.SetMap</c> **前缀**里调：把上一轮注入到这张地图界面上的合成节点摘干净
+    ///     （视觉节点 / <c>_mapPointDictionary</c> / <c>_paths</c>）。
+    ///
+    /// 不清的后果见 <see cref="InjectedNodes" /> 的注释（原版 <c>DrawPaths</c> 查表抛异常 ⇒
+    /// 整次地图重建中断 ⇒ 火堆消失）。
+    ///
+    /// 摘不掉也不影响游戏（最多是本轮地图没有火堆），所以这里**只记日志不抛** —— 但绝不静默：
+    /// 失败会走 Warn，成功走 DebugLog（开着调试就能看到清理了几项）。
+    /// </summary>
+    public static void CleanupInjected(NMapScreen screen)
+    {
+        try
+        {
+            if (!InjectedNodes.TryGetValue(screen, out var record) || record.Count == 0) return;
+            InjectedNodes.Remove(screen);
+
+            var container = Traverse.Create(screen).Field("_points").GetValue<Control>();
+            var pointDict = Traverse.Create(screen)
+                .Field("_mapPointDictionary").GetValue<Dictionary<MapCoord, NMapPoint>>();
+            var paths = Traverse.Create(screen)
+                .Field("_paths")
+                .GetValue<Dictionary<(MapCoord, MapCoord), IReadOnlyList<TextureRect>>>();
+
+            var removedNodes = 0;
+            var removedDict = 0;
+            var removedPaths = 0;
+
+            foreach (var item in record)
+            {
+                if (container != null && item.Node != null && GodotObject.IsInstanceValid(item.Node)
+                    && item.Node.GetParent() == container)
+                {
+                    container.RemoveChild(item.Node);
+                    item.Node.QueueFree();
+                    removedNodes++;
+                }
+
+                // 只删"确实是我们那个节点"的字典项：别的 mod 可能已经在这个坐标上放了东西
+                if (pointDict != null && pointDict.TryGetValue(item.Coord, out var existing)
+                    && ReferenceEquals(existing, item.Node))
+                {
+                    pointDict.Remove(item.Coord);
+                    removedDict++;
+                }
+
+                if (paths != null)
+                {
+                    var stale = paths.Keys
+                        .Where(k => k.Item1 == item.Coord || k.Item2 == item.Coord)
+                        .ToList();
+                    foreach (var key in stale)
+                    {
+                        paths.Remove(key);
+                        removedPaths++;
+                    }
+                }
+            }
+
+            MainFile.DebugLog(
+                $"[SynthHearth] SetMap 前清理上一轮合成节点：视觉 {removedNodes} / 字典 {removedDict} / " +
+                $"连线 {removedPaths}（不清理会让原版 DrawPaths 查表崩溃 ⇒ 火堆消失）");
+        }
+        catch (Exception ex)
+        {
+            MainFile.Logger.Warn($"[SynthHearth] 清理上一轮合成节点失败（本轮地图可能没有火堆）: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -176,6 +291,8 @@ internal static class SyntheticHearth
 
             var points = new List<MapPoint>();
             var nodes = new List<NNormalMapPoint>();
+            var record = InjectedNodes.GetOrCreateValue(screen);
+            record.Clear();      // 上一次的节点已由前缀里的 CleanupInjected 摘掉；这里只保留本轮这一批
 
             for (var i = 0; i < types.Count; i++)
             {
@@ -193,6 +310,7 @@ internal static class SyntheticHearth
                 pointDict[coord] = node;   // 索引器赋值（Add 遇重复键会抛）
                 points.Add(pt);
                 nodes.Add(node);
+                record.Add(new InjectedNode(coord, pt, node));
             }
 
             if (points.Count == 0)
@@ -202,9 +320,20 @@ internal static class SyntheticHearth
             }
 
             // 3) 重新串链：Boss -> 合成点 -> ... -> 第二个 Boss
-            foreach (var pt in points) map.BossMapPoint.AddChildPoint(pt);
-            for (var i = 0; i + 1 < points.Count; i++) points[i].AddChildPoint(points[i + 1]);
-            points[^1].AddChildPoint(map.SecondBossMapPoint);
+            //    ⚠️ 同一个 ActMap 实例只串一次：别的 mod 再调 SetMap 时地图数据往往还是同一张，
+            //       重复 AddChildPoint 会在链上留第二个合成点（幽灵节点 ⇒ 可能走出不存在的房间）。
+            if (!ChainedMaps.TryGetValue(map, out _))
+            {
+                ChainedMaps.Add(map, ChainedMaps);
+                foreach (var pt in points) map.BossMapPoint.AddChildPoint(pt);
+                for (var i = 0; i + 1 < points.Count; i++) points[i].AddChildPoint(points[i + 1]);
+                points[^1].AddChildPoint(map.SecondBossMapPoint);
+            }
+            else
+            {
+                MainFile.DebugLog(
+                    "[SynthHearth] 这张地图实例之前已串过链，本次只补视觉节点（不重复串链）");
+            }
 
             // 4) 画连线
             try

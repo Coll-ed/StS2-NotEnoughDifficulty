@@ -193,6 +193,35 @@ public static class BossGauntletStylePatches
     // 3) 地图界面建好后：注入合成节点（视觉 + 连通 + 连线）
     // ============================================================
 
+    /// <summary>
+    ///     <c>SetMap</c> **前缀**：在原版（以及别的 mod 的 IL hook）重建地图之前，
+    ///     先把自己上一轮注入的合成节点摘干净。
+    ///
+    /// ## 为什么必须有这个前缀（2026-10-12 实测事故，用户："双 BOSS 的火堆又消失了"）
+    /// 新装的创意工坊模组 <c>STS2_Things</c> 的"十字路口层"会在同一幕里**再调一次** <c>SetMap</c>。
+    /// 原版重建时把 <c>_mapPointDictionary</c> 换成了新地图的点，而 <c>_points</c> 容器里还留着
+    /// 我们上一轮挂的节点 ⇒ 原版 <c>DrawPaths</c> 遍历子节点查字典失败并抛：
+    /// <code>
+    /// InvalidOperationException: Map point child with coord MapCoord (53, 67) is not in the map point dictionary!
+    ///   at NMapScreen.DrawPaths_Patch1(...)
+    ///   at NMapScreen.SetMap_Patch5(...)
+    ///   at STS2_Things.Map.NCrossroadLayer.&lt;OnChanged&gt;b__20_0()
+    /// </code>
+    /// ⇒ 整次 SetMap 中断 ⇒ 火堆与两条连线都画不出来。
+    ///
+    /// 前缀 + 后缀是一对：前缀清、原版重建、后缀重新注入（见 <see cref="NMapScreenSetMapPostfix" />）。
+    /// <c>Priority.First</c> 保证我们**最早**清，别的 mod 的 prefix / IL hook 看到的都是干净状态。
+    /// </summary>
+    [HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.SetMap))]
+    [HarmonyPrefix]
+    [HarmonyPriority(Priority.First)]
+    public static void NMapScreenSetMapCleanupPrefix(NMapScreen __instance)
+    {
+        if (!PatchScope.IsEnabled) return;
+        PatchScope.Run(nameof(NMapScreenSetMapCleanupPrefix),
+            () => SyntheticHearth.CleanupInjected(__instance));
+    }
+
     [HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.SetMap))]
     [HarmonyPostfix]
     [HarmonyPriority(Priority.First)]
