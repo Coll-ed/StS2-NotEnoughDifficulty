@@ -44,34 +44,53 @@ internal static class SyntheticHearth
     private const int CoordOffset = 50;
 
     /// <summary>
-    ///     我们注入到各地图界面上的合成节点（视觉节点 + 数据点 + 坐标）—— **SetMap 之前必须清掉**。
+    ///     我们注入到各地图界面上的**一整批**合成内容 —— <c>SetMap</c> 之前必须整批撤掉。
     ///
-    /// ## 为什么必须记账（2026-10-12 实测事故，用户："双 BOSS 的火堆又消失了"）
+    /// ## 为什么必须记账（2026-10-12 / 10-14 两次实测事故，用户："双 BOSS 的火堆又消失了"）
     /// 新装的创意工坊模组 <c>STS2_Things</c> 有个"十字路口层"（<c>NCrossroadLayer.OnChanged</c>），
-    /// 它会在同一幕里**再调一次** <c>NMapScreen.SetMap</c> 重建地图。原版重建时会把
-    /// <c>_mapPointDictionary</c> 换成新地图的点，而 <c>_points</c> 容器里**还留着**我们上一轮挂的节点
-    /// ⇒ 原版 <c>DrawPaths</c> 遍历子节点查字典时抛：
+    /// 它会在同一幕里**再调一次** <c>NMapScreen.SetMap</c> 重建地图。原版重建会换掉
+    /// <c>_mapPointDictionary</c>（视觉节点表），而我们留下的东西有两份：
+    /// <list type="number">
+    ///   <item><c>_points</c> 容器里的**视觉节点**；</item>
+    ///   <item><c>ActMap</c> 数据链上的**合成 <c>MapPoint</c>**（<c>Boss → 火堆 → 第二 BOSS</c>）。</item>
+    /// </list>
+    /// 原版 <c>DrawPaths</c> 是"遍历某个点的数据子节点 → 用子节点坐标去 <c>_mapPointDictionary</c> 查视觉节点"，
+    /// 于是抛：
     /// <code>
     /// InvalidOperationException: Map point child with coord MapCoord (53, 67) is not in the map point dictionary!
     ///   at NMapScreen.DrawPaths_Patch1(NMapScreen this, NMapPoint mapPointNode, MapPoint mapPoint)
     ///   at NMapScreen.SetMap_Patch5(NMapScreen this, ActMap map, UInt64 seed, Boolean clearDrawings)
     ///   at STS2_Things.Map.NCrossroadLayer.&lt;OnChanged&gt;b__20_0()
     /// </code>
-    /// ⇒ 整次 SetMap 中断 ⇒ 火堆与"第一个 BOSS → 火堆 → 第二个 BOSS"的连线都画不出来
-    /// （就是玩家看到的"火堆消失"）。
+    /// ⇒ 整次 SetMap 中断 ⇒ 火堆与两条连线都画不出来（= 玩家看到的"消失"）。
     ///
-    /// 所以：**每次 SetMap 的前缀里先把自己上一轮的节点摘干净**，postfix 再重新注入（见
-    /// <see cref="CleanupInjected" />）。记账用 <see cref="ConditionalWeakTable{TKey,TValue}" />，
-    /// 随地图界面一起被回收，不会泄漏。
+    /// ⚠️ 第一版只摘了视觉节点（<c>_points</c> / 字典），**数据链没摘** —— 那反而把这条异常
+    /// 变成必现（数据子节点还在、字典项却被我删了）。所以现在两份一起摘，顺序无关：
+    /// 数据链用公开 API <c>MapPoint.RemoveChildPoint</c> 还原成我们注入前的样子。
+    ///
+    /// 记账用 <see cref="ConditionalWeakTable{TKey,TValue}" />，随地图界面一起被回收，不泄漏。
     /// </summary>
-    private static readonly ConditionalWeakTable<NMapScreen, List<InjectedNode>> InjectedNodes = new();
+    private static readonly ConditionalWeakTable<NMapScreen, InjectedBatch> InjectedNodes = new();
 
     /// <summary>
-    ///     已经串过链的 <see cref="ActMap" /> 实例。
+    ///     当前**已经串进数据链**的 <see cref="ActMap" /> 实例 ⇒ 它对应那一批的"链"部分。
     ///     同一个地图实例被 <c>SetMap</c> 走两次时（别的 mod 重建视觉、地图数据仍是同一张），
-    ///     再 <c>AddChildPoint</c> 一次会在链上留下第二个合成点 ⇒ 幽灵节点。
+    ///     要么"先摘再串"，要么"只补视觉不重复串链" —— 两边都靠这张表判定，避免幽灵合成点。
     /// </summary>
     private static readonly ConditionalWeakTable<ActMap, object> ChainedMaps = new();
+
+    /// <summary>我们注入的一批合成内容（视觉节点 + 数据点 + 我们加过的链）。</summary>
+    private sealed class InjectedBatch
+    {
+        /// <summary>这批内容属于哪张地图（撤链时要用它）。</summary>
+        public ActMap? Map { get; set; }
+
+        /// <summary>我们挂上去的视觉节点与坐标。</summary>
+        public List<InjectedNode> Nodes { get; } = new();
+
+        /// <summary>我们往数据链里加过的 (父, 子) —— 撤销时逐条 <c>RemoveChildPoint</c>。</summary>
+        public List<(MapPoint Parent, MapPoint Child)> Links { get; } = new();
+    }
 
     /// <summary>我们注入的一个合成节点（坐标 / 数据点 / 视觉节点）。</summary>
     private sealed class InjectedNode
@@ -130,20 +149,20 @@ internal static class SyntheticHearth
     }
 
     /// <summary>
-    ///     <c>NMapScreen.SetMap</c> **前缀**里调：把上一轮注入到这张地图界面上的合成节点摘干净
-    ///     （视觉节点 / <c>_mapPointDictionary</c> / <c>_paths</c>）。
+    ///     <c>NMapScreen.SetMap</c> **前缀**里调：把上一轮注入的合成内容整批撤掉 ——
+    ///     视觉节点 / <c>_mapPointDictionary</c> / <c>_paths</c> / **<c>ActMap</c> 数据链**。
     ///
-    /// 不清的后果见 <see cref="InjectedNodes" /> 的注释（原版 <c>DrawPaths</c> 查表抛异常 ⇒
-    /// 整次地图重建中断 ⇒ 火堆消失）。
+    /// ⚠️ 数据链那一条是第一版漏掉的：只摘视觉不摘链，会让原版 <c>DrawPaths</c>
+    /// "数据子节点还在、字典里查不到" ⇒ 异常变成必现。所以两份必须一起摘（见 <see cref="InjectedNodes" />）。
     ///
-    /// 摘不掉也不影响游戏（最多是本轮地图没有火堆），所以这里**只记日志不抛** —— 但绝不静默：
-    /// 失败会走 Warn，成功走 DebugLog（开着调试就能看到清理了几项）。
+    /// 撤不掉也不影响游戏（最多是本轮地图没有火堆），所以这里**只记日志不抛** —— 但绝不静默：
+    /// 真的撤掉了什么就走 Info（默认可见，便于实机核对），什么都没撤就走 DebugLog。
     /// </summary>
     public static void CleanupInjected(NMapScreen screen)
     {
         try
         {
-            if (!InjectedNodes.TryGetValue(screen, out var record) || record.Count == 0) return;
+            if (!InjectedNodes.TryGetValue(screen, out var batch) || batch.Nodes.Count == 0) return;
             InjectedNodes.Remove(screen);
 
             var container = Traverse.Create(screen).Field("_points").GetValue<Control>();
@@ -157,7 +176,7 @@ internal static class SyntheticHearth
             var removedDict = 0;
             var removedPaths = 0;
 
-            foreach (var item in record)
+            foreach (var item in batch.Nodes)
             {
                 if (container != null && item.Node != null && GodotObject.IsInstanceValid(item.Node)
                     && item.Node.GetParent() == container)
@@ -188,13 +207,47 @@ internal static class SyntheticHearth
                 }
             }
 
-            MainFile.DebugLog(
-                $"[SynthHearth] SetMap 前清理上一轮合成节点：视觉 {removedNodes} / 字典 {removedDict} / " +
-                $"连线 {removedPaths}（不清理会让原版 DrawPaths 查表崩溃 ⇒ 火堆消失）");
+            // ★ 数据链：把我们加过的 (父 → 子) 逐条摘掉，让地图数据回到"我们注入前"的样子。
+            //   用公开 API MapPoint.RemoveChildPoint（已从 sts2.dll 导出确认存在）。
+            var removedLinks = 0;
+            if (batch.Map != null && ChainedMaps.TryGetValue(batch.Map, out _))
+            {
+                foreach (var (parent, child) in batch.Links)
+                {
+                    try
+                    {
+                        if (parent.Children.Contains(child))
+                        {
+                            parent.RemoveChildPoint(child);
+                            removedLinks++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MainFile.Logger.Warn($"[SynthHearth] 撤数据链失败（{parent} → {child}）: {ex.Message}");
+                    }
+                }
+
+                ChainedMaps.Remove(batch.Map);
+            }
+
+            // 真的撤掉了东西 ⇒ 说明这一幕里 SETMAP 被调了第二次（别的 mod 重建地图）。
+            // 这条走 Info：它是"我们的清理是否在实机生效"的唯一可见证据。
+            if (removedNodes + removedDict + removedPaths + removedLinks > 0)
+            {
+                MainFile.Logger.Info(
+                    $"[SynthHearth] SetMap 前撤销上一轮合成内容：视觉 {removedNodes} / 字典 {removedDict} / " +
+                    $"连线 {removedPaths} / 数据链 {removedLinks}" +
+                    "（不撤干净会让原版 DrawPaths 查表崩溃 ⇒ 火堆消失）");
+            }
+            else
+            {
+                MainFile.DebugLog("[SynthHearth] SetMap 前撤销：上一轮没有留下可撤的内容");
+            }
         }
         catch (Exception ex)
         {
-            MainFile.Logger.Warn($"[SynthHearth] 清理上一轮合成节点失败（本轮地图可能没有火堆）: {ex.Message}");
+            MainFile.Logger.Warn($"[SynthHearth] 撤销上一轮合成内容失败（本轮地图可能没有火堆）: {ex.Message}");
         }
     }
 
@@ -291,8 +344,10 @@ internal static class SyntheticHearth
 
             var points = new List<MapPoint>();
             var nodes = new List<NNormalMapPoint>();
-            var record = InjectedNodes.GetOrCreateValue(screen);
-            record.Clear();      // 上一次的节点已由前缀里的 CleanupInjected 摘掉；这里只保留本轮这一批
+            var batch = InjectedNodes.GetOrCreateValue(screen);
+            batch.Nodes.Clear();     // 上一批已由前缀 CleanupInjected 撤掉；这里只保留本轮这一批
+            batch.Links.Clear();
+            batch.Map = map;
 
             for (var i = 0; i < types.Count; i++)
             {
@@ -310,7 +365,7 @@ internal static class SyntheticHearth
                 pointDict[coord] = node;   // 索引器赋值（Add 遇重复键会抛）
                 points.Add(pt);
                 nodes.Add(node);
-                record.Add(new InjectedNode(coord, pt, node));
+                batch.Nodes.Add(new InjectedNode(coord, pt, node));
             }
 
             if (points.Count == 0)
@@ -319,20 +374,33 @@ internal static class SyntheticHearth
                 return false;
             }
 
-            // 3) 重新串链：Boss -> 合成点 -> ... -> 第二个 Boss
-            //    ⚠️ 同一个 ActMap 实例只串一次：别的 mod 再调 SetMap 时地图数据往往还是同一张，
+            // 3) 串链：Boss -> 合成点 -> ... -> 第二个 Boss（逐条登记，供下一次 SetMap 前撤销）
+            //    ⚠️ 同一张 ActMap 实例只串一次：别的 mod 再调 SetMap 时地图数据往往还是同一张，
             //       重复 AddChildPoint 会在链上留第二个合成点（幽灵节点 ⇒ 可能走出不存在的房间）。
+            //       （正常路径下 CleanupInjected 会先把链撤掉并把它从 ChainedMaps 移除，
+            //        所以这里的 "已串过" 只会在"撤链失败"时命中 —— 那时宁可少串也不重复串。）
             if (!ChainedMaps.TryGetValue(map, out _))
             {
                 ChainedMaps.Add(map, ChainedMaps);
-                foreach (var pt in points) map.BossMapPoint.AddChildPoint(pt);
-                for (var i = 0; i + 1 < points.Count; i++) points[i].AddChildPoint(points[i + 1]);
+                foreach (var pt in points)
+                {
+                    map.BossMapPoint.AddChildPoint(pt);
+                    batch.Links.Add((map.BossMapPoint, pt));
+                }
+
+                for (var i = 0; i + 1 < points.Count; i++)
+                {
+                    points[i].AddChildPoint(points[i + 1]);
+                    batch.Links.Add((points[i], points[i + 1]));
+                }
+
                 points[^1].AddChildPoint(map.SecondBossMapPoint);
+                batch.Links.Add((points[^1], map.SecondBossMapPoint));
             }
             else
             {
                 MainFile.DebugLog(
-                    "[SynthHearth] 这张地图实例之前已串过链，本次只补视觉节点（不重复串链）");
+                    "[SynthHearth] 这张地图实例的链还在（上次撤销未生效），本次只补视觉节点、不重复串链");
             }
 
             // 4) 画连线
