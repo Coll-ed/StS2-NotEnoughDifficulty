@@ -235,6 +235,20 @@ public static class BossGauntletStylePatches
         if (!PatchScope.IsEnabled) return;
         if (map == null) return;
 
+        // ★ 异常哨兵（Warn，默认可见）：这一层**本该有**第二个 BOSS（act 上挂着 SecondBossEncounter），
+        //   但传进来的这张地图**没有**第二个 BOSS 点 ⇒ 火堆无处可插（玩家看到的就是"火堆消失"）。
+        //   最可能的来源：别的 mod 在同一幕里重建地图，而它那张图没带上第二个 BOSS 点
+        //   （用户实测：连续开第二把时第 1 层的火堆消失；且注入日志此前只报"已注入"）。
+        //   这条 Warn 是"地图被换掉"的直接证据，见 SyntheticHearth.InjectVisuals 的跳过原因日志。
+        var actForCheck = RunStateAccessor.GetCurrentState()?.Act;
+        if (actForCheck != null && actForCheck.HasSecondBoss && map.SecondBossMapPoint == null)
+        {
+            MainFile.Logger.Warn(
+                $"[Gauntlet] 地图异常：act='{actForCheck.Id?.Entry}' 上**有**第二个 BOSS" +
+                $"（{actForCheck.SecondBossEncounter?.Id?.Entry ?? "null"}），但 SetMap 传进来的地图里" +
+                "**没有第二个 BOSS 点** ⇒ 合成火堆无法注入（这通常意味着地图被别的 mod 重建后丢了第二个 BOSS）");
+        }
+
         // ★★ 这里**不能**"有人也 patch 了 SetMap ⇒ 整套放权"（2026-09-22 实际事故）。
         //
         //   `SetMap` 上我们做的事是**纯加法**：原方法（含所有其它 mod 的 postfix / IL hook）跑完之后，

@@ -269,7 +269,8 @@ internal static class SyntheticHearth
             var actIdx = RunProgress.GetActIndex(state);
             if (actIdx < 1)
             {
-                MainFile.DebugLog($"[SynthHearth] act 认不出层号（act={state.Act?.Id?.Entry}），跳过火堆注入");
+                MainFile.Logger.Info(
+                    $"[SynthHearth] 跳过火堆注入：认不出层号（act={state.Act?.Id?.Entry}）");
                 return false;
             }
 
@@ -282,7 +283,7 @@ internal static class SyntheticHearth
             //   在检测到处于 N10 时，跳过自己的放置，因此让拦截正常运行！"
             if (actIdx == 3 && N10DoubleBossAtAct3Patch.IsN10Active())
             {
-                MainFile.DebugLog("[SynthHearth] act3：N10 已接管双 boss，本 mod 不注入火堆");
+                MainFile.Logger.Info("[SynthHearth] 跳过火堆注入：act3 由 N10 接管双 boss");
                 return false;
             }
 
@@ -291,23 +292,28 @@ internal static class SyntheticHearth
             //   判据用**类型**而不是层号 —— 第 4 幕被别的模组占用而顺延时，它排在第 6 幕，层号会变。
             if (state?.Act is Act5Model)
             {
-                MainFile.DebugLog("[SynthHearth] act5：连战幕的布局自己控制，不注入合成火堆");
+                MainFile.Logger.Info("[SynthHearth] 跳过火堆注入：act5（连战幕）的布局自己控制");
                 return false;
             }
 
             if (map.SecondBossMapPoint == null)
             {
-                MainFile.DebugLog(
-                    $"[SynthHearth] 第 {actIdx} 层地图没有第二个 boss 点（secondBoss=无）⇒ 不存在" +
-                    "\"两个 boss 中间\"，不需要合成火堆");
+                // ★ Info 级（默认可见）：这是"地图上根本没有第二个 BOSS 点"的唯一证据。
+                //   跨局复现（用户："输一把后立刻再开一把，火堆消失"）时最可能命中的就是这条 ——
+                //   别的 mod 重建地图后若没带上第二个 BOSS 点，我们既没有"中间"可插，也插不出火堆。
+                MainFile.Logger.Info(
+                    $"[SynthHearth] 跳过火堆注入：第 {actIdx} 层地图**没有第二个 BOSS 点**" +
+                    $"（act={state?.Act?.Id?.Entry}，act.HasSecondBoss={state?.Act?.HasSecondBoss}，" +
+                    $"secondEncounter={state?.Act?.SecondBossEncounter?.Id?.Entry ?? "null"}，" +
+                    $"switch={DoubleBossConfigPatch.IsDoubleBossEnabled(ActLayout.ConfigLayerOf(state?.Act, state))}）");
                 return false;
             }
 
             var cfgLayer = ActLayout.ConfigLayerOf(state?.Act, state);
             if (!DoubleBossConfigPatch.IsDoubleBossEnabled(cfgLayer))
             {
-                MainFile.DebugLog(
-                    $"[SynthHearth] 第 {actIdx} 层（配置槽位 {cfgLayer}）的双 boss 开关是关的 ⇒ 不注入合成火堆");
+                MainFile.Logger.Info(
+                    $"[SynthHearth] 跳过火堆注入：第 {actIdx} 层（配置槽位 {cfgLayer}）的双 boss 开关是关的");
                 return false;
             }
 
@@ -427,6 +433,15 @@ internal static class SyntheticHearth
                 $"[SynthHearth] 已在第 {actIdx} 层注入 {points.Count} 个合成节点" +
                 $"（{string.Join(" → ", points.Select(p => p.PointType.ToString()))}，" +
                 $"坐标 {string.Join(", ", points.Select(p => $"({p.coord.col},{p.coord.row})"))}）");
+
+            // ★ 追加"真的挂上去了吗"的可见证据（Info，默认可见）：
+            //   容器子节点数 / 节点在树里是否可见 / 屏幕本身是否可见 / 屏幕实例 id。
+            //   跨局复现（用户："输一把后立刻再开一把，第 1 层火堆消失"）时，这行能区分
+            //   「没挂上容器」与「挂到了不可见的界面实例」——这是两种完全不同的修法。
+            var attachVisible = GodotObject.IsInstanceValid(nodes[0]) && nodes[0].IsVisibleInTree();
+            MainFile.Logger.Info(
+                $"[SynthHearth] 注入核对：容器子节点={container.GetChildCount()} " +
+                $"节点可见={attachVisible} 屏幕可见={screen.IsVisibleInTree()} 屏幕实例={screen.GetInstanceId()}");
 
             // 5) 重算可通行性（**关键**）
             // 原版的重算发生在 SetMap 内部、**早于**本 postfix，所以刚接上的连通关系
