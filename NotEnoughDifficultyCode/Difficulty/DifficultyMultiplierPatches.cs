@@ -194,10 +194,11 @@ public static class MonsterHpMultiplierPatch
                     _lastSkipKey = skipKey;
                     MainFile.Logger.Info(
                         $"[难度] 本场**不缩放**血量：act={RunProgress.GetActIndex(rs)}" +
-                        $"（配置槽位 {configLayer}，强化开关=" +
-                        $"{(RunProgress.IsExtraScalingEnabled(configLayer) ? "开" : "**关**")}）" +
+                        $"（配置槽位 {configLayer}，总开关=" +
+                        $"{(NotEnoughDifficultyConfig.ExtraScaling_All ? "开" : "关")}，" +
+                        $"该层强化开关={(RunProgress.IsExtraScalingEnabled(configLayer) ? "开" : "**关**")}）" +
                         $"ActFloor={rs?.ActFloor ?? 0} HpScaleFactor={NotEnoughDifficultyConfig.HpScaleFactor}" +
-                        " —— 若要本层强化，请在设置里打开对应层的『额外强化』开关");
+                        " —— 若总开关与该层开关**都是关**，请在设置里打开『额外强化（所有层）』");
                 }
 
                 return;
@@ -283,6 +284,20 @@ public static class MonsterDamageMultiplierPatch
 
             if (Math.Abs(dmgMult - 1.0) < 1e-6) return;
 
+            // ★ Info（按 act + ActFloor 去重）：让"攻击有没有变强"也能被玩家直接看到。
+            //   之前只有血量有可见日志，玩家会以为攻击没生效（用户 2026-10-16：
+            //   "第4第5层我基本全是原版血量与攻击"——血量那半其实一直有 ×1.2~×2.5 的日志）。
+            var rs = runState as RunState;
+            var key = $"dmg|a{RunProgress.GetActIndex(rs)}|f{rs?.ActFloor ?? 0}|x{dmgMult:F2}";
+            if (key != _lastDmgKey)
+            {
+                _lastDmgKey = key;
+                MainFile.Logger.Info(
+                    $"[难度] 攻击强化已应用：act={RunProgress.GetActIndex(rs)}" +
+                    $"（配置槽位 {ActLayout.ConfigLayerOf(rs?.Act, rs)}）ActFloor={rs?.ActFloor ?? 0}" +
+                    $" ⇒ 攻击 ×{dmgMult:F2}（DmgScaleFactor={NotEnoughDifficultyConfig.DmgScaleFactor}）");
+            }
+
             __result *= (decimal)dmgMult;
         }
         catch (Exception ex)
@@ -290,6 +305,9 @@ public static class MonsterDamageMultiplierPatch
             MainFile.Logger.Error($"MonsterDamageMultiplierPatch failed: {ex}");
         }
     }
+
+    /// <summary>上一次"攻击强化已应用"日志的键（同一 act/层只报一次）。位于 hot path 之外。</summary>
+    private static string? _lastDmgKey;
 }
 
 /// <summary>

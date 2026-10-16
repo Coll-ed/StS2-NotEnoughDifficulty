@@ -79,14 +79,15 @@ public static class BossGauntletStylePatches
             //   血量不变"时，这一行就能立刻区分"开关没开（含设置界面没保存）"与"开关开了却没生效"。
             MainFile.Logger.Info(
                 "[难度] 本局强化开关: " +
-                $"act1={NotEnoughDifficultyConfig.Act1_ExtraScaling} " +
+                $"总开关(所有层)={NotEnoughDifficultyConfig.ExtraScaling_All} " +
+                $"| 逐层 act1={NotEnoughDifficultyConfig.Act1_ExtraScaling} " +
                 $"act2={NotEnoughDifficultyConfig.Act2_ExtraScaling} " +
                 $"act3={NotEnoughDifficultyConfig.Act3_ExtraScaling} " +
                 $"act4(本模组第1幕)={NotEnoughDifficultyConfig.Act4_ExtraScaling} " +
                 $"act5(本模组第2幕)={NotEnoughDifficultyConfig.Act5_ExtraScaling} " +
                 $"| 血量系数Y={NotEnoughDifficultyConfig.HpScaleFactor} " +
                 $"攻击系数X={NotEnoughDifficultyConfig.DmgScaleFactor} " +
-                "（血量 = 1 + ActFloor×0.1×Y；攻击 = 1 + ActFloor×0.05×X）");
+                "（总开关打开时忽略逐层；血量 = 1 + ActFloor×0.1×Y；攻击 = 1 + ActFloor×0.05×X）");
         });
     }
 
