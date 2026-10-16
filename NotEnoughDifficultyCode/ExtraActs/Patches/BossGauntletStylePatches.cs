@@ -86,8 +86,8 @@ public static class BossGauntletStylePatches
                 $"act5(本模组第2幕)={NotEnoughDifficultyConfig.Act5_ExtraScaling} " +
                 $"| 血量系数Y={NotEnoughDifficultyConfig.HpScaleFactor} " +
                 $"攻击系数X={NotEnoughDifficultyConfig.DmgScaleFactor} " +
-                "（按玩家实际打的幕判定：本模组的幕用 act4/act5 开关，别的模组的幕按真实层号取对应开关；" +
-                "血量 = 1 + ActFloor×0.1×Y；攻击 = 1 + ActFloor×0.05×X）");
+                "（act1/2/3 = 基础三幕；**act4/act5 特指本模组自己的两幕**（被别的模组挤到第 5/6 幕也算）；" +
+                "别的模组的整幕一律不强化 —— 血量 = 1 + ActFloor×0.1×Y；攻击 = 1 + ActFloor×0.05×X）");
         });
     }
 

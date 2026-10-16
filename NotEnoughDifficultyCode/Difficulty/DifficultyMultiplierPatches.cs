@@ -197,7 +197,7 @@ public static class MonsterHpMultiplierPatch
                         $"（配置槽位 {configLayer}，该层强化开关=**关**）" +
                         $"ActFloor={rs?.ActFloor ?? 0} HpScaleFactor={NotEnoughDifficultyConfig.HpScaleFactor}" +
                         " —— 要这一幕强化，就在设置里打开对应层的『额外强化』开关" +
-                        "（本模组的幕看 act4/act5，别的模组的幕按其真实层号）");
+                        "（act1/2/3 = 基础三幕；act4/act5 特指本模组自己的两幕；别的模组的整幕不改）");
                 }
 
                 return;

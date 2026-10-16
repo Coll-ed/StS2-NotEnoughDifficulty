@@ -581,30 +581,25 @@ internal static class RunProgress
     /// <summary>
     ///     这一幕到底要不要强化 —— 逐层开关的**唯一判定入口**。
     ///
-    /// ## 判定用"玩家实际打的那一幕"（2026-10-16 用户实测两个方向都踩过）
-    /// <list type="number">
-    ///   <item><b>认得出是本模组的幕</b>（act4/act5，含被顺延到第 5/6 幕的情况）⇒ 用
-    ///         <see cref="ActLayout.ConfigLayerOf" /> 给出的**配置槽位**（4/5）——
-    ///         这样玩家在设置里调 "act4/act5" 时，调的就是本模组那两幕；</item>
-    ///   <item><b>认不出</b>（别的模组的整幕，例如 <c>THE_ENDING</c> 占用了第 4 幕）⇒ 用
-    ///         <see cref="GetActIndex" /> 的**真实层号**。用户口径："我在模组里面的 ACT 2 变种"、
-    ///         "强化在第 4 层也没有生效"—— 玩家说的"第 4 幕"就是他真正打的第 4 幕，
-    ///         所以设置里的 <c>Act4_ExtraScaling</c> 必须落到那一幕上，而不是因为
-    ///         我们认不出那个 act 类型就整层跳过（旧逻辑正是这样，导致前四幕毫无压力）。</item>
+    /// ## 口径（用户 2026-10-16 明确指定，别再自作聪明）
+    /// <list type="bullet">
+    ///   <item><c>Act1/2/3_ExtraScaling</c> = 基础三幕（玩家自己的设置，默认关）；</item>
+    ///   <item><c>Act4/Act5_ExtraScaling</c> = <b>特指本模组自己的那两幕</b> ——
+    ///         不管别的模组把我们的幕挤到第 5/6 幕，这两个开关管的始终是**我们的幕**
+    ///         （所以用 <see cref="ActLayout.ConfigLayerOf" /> 给出的配置槽位 4/5，而不是绝对层号）；</item>
+    ///   <item><b>别的模组的整幕一律不强化</b>（用户原话："模组的第4幕不给强化，4幕5幕单独特指我们的模组"）。
+    ///         例如占用第 4 幕的 <c>THE_ENDING</c>：我们认不出它 ⇒ 保持原样，
+    ///         **不要**拿玩家的 <c>Act4_ExtraScaling</c> 去套它。</item>
     /// </list>
-    /// ⚠️ 曾经加过"全部启用（所有层）"总开关来一次解决，被用户否掉：
-    /// <i>"我之前做过设置的，可以单独每层配置，你加一个全部启用是什么意思?"</i>
-    /// —— 逐层开关是玩家自己的口径，不该被一个总开关整体推翻。**已删除该开关。**
+    /// ⚠️ 两次踩坑记录（都已被用户否掉，别再改回去）：
+    /// ① 加"全部启用（所有层）"总开关 ⇒ 盖掉玩家的逐层设置，第 1 幕变成地狱；
+    /// ② 认不出的幕改按"真实层号"取开关 ⇒ 把 <c>Act4_ExtraScaling</c> 套到了别的模组的第 4 幕上。
     /// </summary>
     public static bool IsScalingActiveFor(RunState? state)
     {
         var slot = ActLayout.ConfigLayerOf(state?.Act, state);
-        var key = slot >= 1 ? slot : GetActIndex(state);      // 认得出 → 配置槽位；认不出 → 真实层号
-        if (key < 1) return false;
-
-        // 第 5 层及以上的未知幕（例如整幕模组把幕排到第 6 之后）沿用最深一档（act5）的开关
-        if (key > 5) key = 5;
-        return IsExtraScalingEnabled(key);
+        if (slot < 1) return false;      // 认不出 / 不是本模组的幕 ⇒ 不强化（别的模组的整幕保持原样）
+        return IsExtraScalingEnabled(slot);
     }
 
     /// <summary>
