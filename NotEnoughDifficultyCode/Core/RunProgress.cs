@@ -534,15 +534,14 @@ internal static class RunProgress
     // ============================================================
 
     /// <summary>
-    ///     当前层是否启用额外强化。
-    ///     <b>总开关优先</b>（<see cref="NotEnoughDifficultyConfig.ExtraScaling_All" />，默认开）：
-    ///     打开时所有层都强化；关掉后才回落到逐层开关（1~3 层默认关、4~5 层默认开）。
-    ///     <paramref name="actIdx" /> &lt; 1（不是本模组的层，例如别的模组的幕）一律不强化。
+    ///     某个**配置槽位 / 层号**是否启用额外强化（1~3 层默认关、4~5 层默认开，全部由玩家开关决定）。
+    ///     <paramref name="actIdx" /> &lt; 1 一律 false（边界显式）。
+    ///     注意：**决定"这一幕要不要强化"请用 <see cref="IsScalingActiveFor" />** ——
+    ///     它会先把"玩家实际打的幕"映射成正确的槽位/层号。
     /// </summary>
     public static bool IsExtraScalingEnabled(int actIdx)
     {
-        if (actIdx < 1) return false;                                  // 边界显式：非本模组的层不碰
-        if (NotEnoughDifficultyConfig.ExtraScaling_All) return true;    // 总开关
+        if (actIdx < 1) return false;
 
         return actIdx switch
         {
@@ -569,10 +568,7 @@ internal static class RunProgress
     /// </summary>
     public static double GetHpMultiplier(RunState? state)
     {
-        // ⚠️ 用"配置槽位"而不是绝对层号：本模组的两个幕被顺延到第 5/6 幕时，
-        //    Act4_/Act5_ 开关仍要对**本模组的幕**生效（见 ActLayout）。
-        var actIdx = ActLayout.ConfigLayerOf(state?.Act, state);
-        if (!IsScalingActiveFor(actIdx)) return 1.0;
+        if (!IsScalingActiveFor(state)) return 1.0;
 
         var floor = Math.Max(0, state!.ActFloor);
         var y = NotEnoughDifficultyConfig.HpScaleFactor;
@@ -583,21 +579,32 @@ internal static class RunProgress
     }
 
     /// <summary>
-    ///     这一幕到底要不要强化 —— <b>总开关 + 逐层</b>的唯一判定入口。
+    ///     这一幕到底要不要强化 —— 逐层开关的**唯一判定入口**。
     ///
-    /// ## 为什么不能只看"配置槽位 ≥ 1"（2026-10-16 用户："强化在第 4 层也没有生效"）
-    /// 日志实证：<c>[难度] 本场**不缩放**血量：act=4（配置槽位 -1，强化开关=**关**）</c>。
-    /// 玩家的第 4 幕是**别的模组的幕**（THE_ENDING / Act4Heart）⇒ <see cref="ActLayout.ConfigLayerOf" />
-    /// 认不出它，返回 -1，旧逻辑就整层跳过 ⇒ 玩家在前四幕完全感受不到强化。
-    ///
-    /// 现在：**总开关打开时，任何一幕都强化**（不要求我们认得这个 act）；关掉总开关才回落到
-    /// 逐层开关，且只有认得出来的层（槽位 ≥ 1）才可能开 —— 别的模组的幕保持原样。
+    /// ## 判定用"玩家实际打的那一幕"（2026-10-16 用户实测两个方向都踩过）
+    /// <list type="number">
+    ///   <item><b>认得出是本模组的幕</b>（act4/act5，含被顺延到第 5/6 幕的情况）⇒ 用
+    ///         <see cref="ActLayout.ConfigLayerOf" /> 给出的**配置槽位**（4/5）——
+    ///         这样玩家在设置里调 "act4/act5" 时，调的就是本模组那两幕；</item>
+    ///   <item><b>认不出</b>（别的模组的整幕，例如 <c>THE_ENDING</c> 占用了第 4 幕）⇒ 用
+    ///         <see cref="GetActIndex" /> 的**真实层号**。用户口径："我在模组里面的 ACT 2 变种"、
+    ///         "强化在第 4 层也没有生效"—— 玩家说的"第 4 幕"就是他真正打的第 4 幕，
+    ///         所以设置里的 <c>Act4_ExtraScaling</c> 必须落到那一幕上，而不是因为
+    ///         我们认不出那个 act 类型就整层跳过（旧逻辑正是这样，导致前四幕毫无压力）。</item>
+    /// </list>
+    /// ⚠️ 曾经加过"全部启用（所有层）"总开关来一次解决，被用户否掉：
+    /// <i>"我之前做过设置的，可以单独每层配置，你加一个全部启用是什么意思?"</i>
+    /// —— 逐层开关是玩家自己的口径，不该被一个总开关整体推翻。**已删除该开关。**
     /// </summary>
-    public static bool IsScalingActiveFor(int configLayer)
+    public static bool IsScalingActiveFor(RunState? state)
     {
-        if (NotEnoughDifficultyConfig.ExtraScaling_All) return true;   // 总开关：任何一幕都强化
-        if (configLayer < 1) return false;                            // 逐层模式：不认识的幕不动
-        return IsExtraScalingEnabled(configLayer);
+        var slot = ActLayout.ConfigLayerOf(state?.Act, state);
+        var key = slot >= 1 ? slot : GetActIndex(state);      // 认得出 → 配置槽位；认不出 → 真实层号
+        if (key < 1) return false;
+
+        // 第 5 层及以上的未知幕（例如整幕模组把幕排到第 6 之后）沿用最深一档（act5）的开关
+        if (key > 5) key = 5;
+        return IsExtraScalingEnabled(key);
     }
 
     /// <summary>
@@ -606,8 +613,7 @@ internal static class RunProgress
     /// </summary>
     public static double GetDmgMultiplier(RunState? state)
     {
-        var actIdx = ActLayout.ConfigLayerOf(state?.Act, state);   // 配置槽位（见 GetHpMultiplier 注释）
-        if (!IsScalingActiveFor(actIdx)) return 1.0;
+        if (!IsScalingActiveFor(state)) return 1.0;
 
         var floor = Math.Max(0, state!.ActFloor);
         var x = NotEnoughDifficultyConfig.DmgScaleFactor;

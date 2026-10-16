@@ -187,18 +187,17 @@ public static class MonsterHpMultiplierPatch
             if (Math.Abs(hpMult - 1.0) < 1e-6)
             {
                 // 没缩放的**原因**要说清楚，否则玩家只能看到"血量没变"（用户反馈 2026-09-27：
-                // "强化没有正确启用，血量依旧不变"）。每个 (act, 开关) 组合只报一次，不刷屏。
-                var skipKey = $"a{RunProgress.GetActIndex(rs)}|sw{(RunProgress.IsExtraScalingEnabled(configLayer) ? 1 : 0)}";
+                // "强化没有正确启用，血量依旧不变"）。每个 (act, 层) 组合只报一次，不刷屏。
+                var skipKey = $"a{RunProgress.GetActIndex(rs)}|slot{configLayer}";
                 if (skipKey != _lastSkipKey)
                 {
                     _lastSkipKey = skipKey;
                     MainFile.Logger.Info(
                         $"[难度] 本场**不缩放**血量：act={RunProgress.GetActIndex(rs)}" +
-                        $"（配置槽位 {configLayer}，总开关=" +
-                        $"{(NotEnoughDifficultyConfig.ExtraScaling_All ? "开" : "关")}，" +
-                        $"该层强化开关={(RunProgress.IsExtraScalingEnabled(configLayer) ? "开" : "**关**")}）" +
+                        $"（配置槽位 {configLayer}，该层强化开关=**关**）" +
                         $"ActFloor={rs?.ActFloor ?? 0} HpScaleFactor={NotEnoughDifficultyConfig.HpScaleFactor}" +
-                        " —— 若总开关与该层开关**都是关**，请在设置里打开『额外强化（所有层）』");
+                        " —— 要这一幕强化，就在设置里打开对应层的『额外强化』开关" +
+                        "（本模组的幕看 act4/act5，别的模组的幕按其真实层号）");
                 }
 
                 return;
