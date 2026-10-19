@@ -88,7 +88,8 @@ public static class BossGauntletStylePatches
                 $"| 血量系数Y={NotEnoughDifficultyConfig.HpScaleFactor} " +
                 $"攻击系数X={NotEnoughDifficultyConfig.DmgScaleFactor} " +
                 "（act1/2/3 = 基础三幕；**act4/act5 特指本模组自己的两幕**（被别的模组挤到第 5/6 幕也算）；" +
-                "别的模组的整幕一律不强化 —— 血量 = 1 + ActFloor×0.1×Y；攻击 = 1 + ActFloor×0.05×X）");
+                "别的模组的整幕一律不强化 —— 血量 = 1 + **总层数**×0.1×Y；攻击 = 1 + **总层数**×0.05×X" +
+                "（总层数 = 全局累计楼层，跨幕连续；每幕约 17 层 ⇒ act4 开幕时总层数 ≈ 51）");
         });
     }
 

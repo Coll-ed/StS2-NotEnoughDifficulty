@@ -9,21 +9,25 @@ namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 ///
 /// 全部倍率字段已删除，改为**按玩家实际爬塔进度**线性叠加：
 /// <code>
-///   血量额外强化% = 当前 ActFloor × 0.1 × HpScaleFactor(Y)
-///   攻击额外强化% = 当前 ActFloor × 0.05 × DmgScaleFactor(X)
+///   血量额外强化% = **总层数** × 0.1 × HpScaleFactor(Y)
+///   攻击额外强化% = **总层数** × 0.05 × DmgScaleFactor(X)
 ///
-///   HpMult  = 1 + ActFloor × 0.1  × Y / 100
-///   DmgMult = 1 + ActFloor × 0.05 × X / 100
+///   HpMult  = 1 + 总层数 × 0.1  × Y
+///   DmgMult = 1 + 总层数 × 0.05 × X
 /// </code>
 ///
-/// 其中 <c>ActFloor</c> 用 <c>RunState.ActFloor</c> 的原生语义（act 内层数，每 act 重新起算）。
-/// 公式**对所有 act 统一计算**，是否真正生效由每层的 <see cref="Act1_ExtraScaling" /> 等开关决定：
+/// 其中"总层数"= <c>RunState.TotalFloor</c>（**全局累计楼层**，跨幕连续）。
+/// ⚠️ 2026-10-19 用户指定改口径：旧实现用 <c>ActFloor</c>（act 内层数，每幕重新起算）⇒
+/// 本模组的 act4/act5（精英与 BOSS 试炼）开幕永远是"第 0~1 层"= 原版强度，每幕都要重新爬。
+/// 现在跨幕连续、只增不减（代价：每幕约 17 层 ⇒ act4 开幕时总层数 ≈ 51 ⇒ Y=1 时血量 ×6.1）。
+///
+/// 公式**对所有幕统一计算**，是否真正生效由每层的 <see cref="Act1_ExtraScaling" /> 等开关决定：
 /// 开关关闭的层，两个倍率都被强制返回 1.0（= 完全不影响该层）。
 ///
 /// ## 为什么 X / Y 默认 1
 ///
 /// 玩家改这两个数就能整体放大/缩小强化幅度，而不用逐个 act 调。
-/// Y=X=1 时：act 第 10 层 → 血量 +100%、攻击 +50%。
+/// Y=X=1 时：总层数第 10 层 → 血量 +100%、攻击 +50%。
 ///
 /// ## 多人同步
 ///
@@ -33,17 +37,16 @@ namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 internal partial class NotEnoughDifficultyConfig
 {
     /// <summary>
-    ///     每层血量强化系数（Y）。额外血量% = ActFloor × 0.1 × Y。
-    ///     1.0 = 每层 +0.1% 基数（即第 10 层 +1%×10 = +10%？见公式：ActFloor×0.1×Y 是**百分比**，
-    ///     所以第 10 层 = 10 × 0.1 × 1 = 1.0 → 额外 +100%）。
+    ///     每层血量强化系数（Y）。额外血量% = **总层数** × 0.1 × Y。
+    ///     总层数第 10 层 = 10 × 0.1 × 1 = 1.0 → 额外 +100%（血量翻倍）。
     /// </summary>
     [ConfigSection("Difficulty")]
     [ConfigSlider(0, 20, 0.05)]
     public static double HpScaleFactor { get; set; } = 1.0;
 
     /// <summary>
-    ///     每层攻击强化系数（X）。额外攻击% = ActFloor × 0.05 × X。
-    ///     第 10 层、X=1 时 = 10 × 0.05 = 0.5 → 额外 +50%。
+    ///     每层攻击强化系数（X）。额外攻击% = **总层数** × 0.05 × X。
+    ///     总层数第 10 层、X=1 时 = 10 × 0.05 = 0.5 → 额外 +50%。
     /// </summary>
     [ConfigSlider(0, 20, 0.05)]
     public static double DmgScaleFactor { get; set; } = 1.0;

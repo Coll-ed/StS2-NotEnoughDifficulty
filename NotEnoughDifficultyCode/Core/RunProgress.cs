@@ -555,24 +555,35 @@ internal static class RunProgress
     }
 
     /// <summary>
-    ///     血量倍率 = 1 + ActFloor × 0.1 × Y（<b>百分点</b>，与配置本地化文案一致）。
+    ///     血量倍率 = 1 + **总层数** × 0.1 × Y。
     ///
-    /// ⚠️ <b>2026-09-23 修（用户："难度疑似没有提升怪物血量"）</b>：旧实现写成
-    /// <c>1 + ActFloor × 0.1 × Y / 100</c>，于是 Y=1、第 10 层只得到 <b>+1%</b>，
-    /// 而配置界面（<c>NOTENOUGHDIFFICULTY-HP_SCALE_FACTOR.description</c>）白纸黑字写着
-    /// "第 10 层 → 10×0.1×1 = <b>+100%</b>，即血量翻倍"。**代码与文案差 100 倍** ⇒ 玩家配了 Y=1
-    /// 却几乎看不到强化。现在按文案来：<c>1 + ActFloor × 0.1 × Y</c>。
+    /// ## ⚠️ 2026-10-19：层数口径从"本幕内楼层"改成"**全局累计层数**"（用户指定）
+    /// 用户原话：*"ACT 精英与 BOSS 试炼是从已经启用的难度增加楼层那里开始计数……我在 ACT 精英开幕的时候
+    /// 是原版 boss，这个时候的难度计数是我爬了 0 层，是自己计数而不是直接读全局爬层数"*。
+    /// 旧实现用 <c>RunState.ActFloor</c> = **本幕内**楼层（每幕从 1 重新数）⇒ act4/act5 的试炼开幕永远是
+    /// "第 0~1 层"= 原版强度，每幕都要重新爬。
+    /// 现在用 <c>RunState.TotalFloor</c> = **全局累计楼层** ⇒ 强度跨幕连续、只增不减。
+    ///
+    /// ## 数值后果（必须知道，用户已确认接受）
+    /// 每幕约 17 层，所以 act4 开幕时总层数 ≈ 51 ⇒ Y=1 时血量 **×6.1**、攻击 **×3.6**（X=1）。
+    /// 想温和就把 <c>HpScaleFactor</c> / <c>DmgScaleFactor</c> 调低（例如 0.2~0.3），
+    /// 或把对应层的『额外强化』开关关掉。
+    ///
+    /// ## 量纲修正（2026-09-23 保留）
+    /// 旧实现写成 <c>1 + 层数 × 0.1 × Y / 100</c>，Y=1、第 10 层只得到 <b>+1%</b>，
+    /// 而配置界面（<c>NOTENOUGHDIFFICULTY-HP_SCALE_FACTOR.description</c>）写着
+    /// "第 10 层 → <b>+100%</b>"。**代码与文案差 100 倍** ⇒ 现在按文案来：<c>1 + 层数 × 0.1 × Y</c>。
     ///
     /// 该层未启用强化时返回 1.0（完全不改原值）。上限 clamp 到 100 倍，防呆
-    /// （ActFloor 万一被外部写成异常大值时不至于把血量乘到溢出）。
+    /// （总层数万一被写成异常大值时不至于把血量乘到溢出）。
     /// </summary>
     public static double GetHpMultiplier(RunState? state)
     {
         if (!IsScalingActiveFor(state)) return 1.0;
 
-        var floor = Math.Max(0, state!.ActFloor);
+        var floor = Math.Max(0, state!.TotalFloor);   // ★ 全局累计层数（不是 ActFloor）
         var y = NotEnoughDifficultyConfig.HpScaleFactor;
-        var mult = 1.0 + floor * 0.1 * y;      // 第 10 层、Y=1 → 2.0（+100%）
+        var mult = 1.0 + floor * 0.1 * y;      // 总层数 10、Y=1 → 2.0（+100%）
         if (mult < 1.0) mult = 1.0;
         if (mult > MaxExtraMultiplier) mult = MaxExtraMultiplier;
         return mult;
@@ -603,22 +614,22 @@ internal static class RunProgress
     }
 
     /// <summary>
-    ///     攻击倍率 = 1 + ActFloor × 0.05 × X（<b>百分点</b>，同 <see cref="GetHpMultiplier" /> 的量纲修正）。
+    ///     攻击倍率 = 1 + **总层数** × 0.05 × X（量纲与 <see cref="GetHpMultiplier" /> 一致）。
     ///     该层未启用强化时返回 1.0。
     /// </summary>
     public static double GetDmgMultiplier(RunState? state)
     {
         if (!IsScalingActiveFor(state)) return 1.0;
 
-        var floor = Math.Max(0, state!.ActFloor);
+        var floor = Math.Max(0, state!.TotalFloor);   // ★ 全局累计层数（见 GetHpMultiplier 的说明）
         var x = NotEnoughDifficultyConfig.DmgScaleFactor;
-        var mult = 1.0 + floor * 0.05 * x;     // 第 10 层、X=1 → 1.5（+50%）
+        var mult = 1.0 + floor * 0.05 * x;     // 总层数 10、X=1 → 1.5（+50%）
         if (mult < 1.0) mult = 1.0;
         if (mult > MaxExtraMultiplier) mult = MaxExtraMultiplier;
         return mult;
     }
 
-    /// <summary>额外强化的上限（防呆：ActFloor 被外部写成异常大值时不至于把血量乘爆）。</summary>
+    /// <summary>额外强化的上限（防呆：总层数被写成异常大值时不至于把血量乘爆）。</summary>
     private const double MaxExtraMultiplier = 100.0;
 
     /// <summary>

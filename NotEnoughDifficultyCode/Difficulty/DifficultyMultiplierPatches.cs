@@ -195,7 +195,8 @@ public static class MonsterHpMultiplierPatch
                     MainFile.Logger.Info(
                         $"[难度] 本场**不缩放**血量：act={RunProgress.GetActIndex(rs)}" +
                         $"（配置槽位 {configLayer}，该层强化开关=**关**）" +
-                        $"ActFloor={rs?.ActFloor ?? 0} HpScaleFactor={NotEnoughDifficultyConfig.HpScaleFactor}" +
+                        $"总层数={rs?.TotalFloor ?? 0}（幕内 {rs?.ActFloor ?? 0}）" +
+                        $" HpScaleFactor={NotEnoughDifficultyConfig.HpScaleFactor}" +
                         " —— 要这一幕强化，就在设置里打开对应层的『额外强化』开关" +
                         "（act1/2/3 = 基础三幕；act4/act5 特指本模组自己的两幕；别的模组的整幕不改）");
                 }
@@ -231,7 +232,7 @@ public static class MonsterHpMultiplierPatch
                 _lastAppliedKey = logKey;
                 MainFile.Logger.Info(
                     $"[难度] 血量强化已应用：act={RunProgress.GetActIndex(rs)}" +
-                    $"（配置槽位 {configLayer}）ActFloor={rs?.ActFloor ?? 0}" +
+                    $"（配置槽位 {configLayer}）总层数={rs?.TotalFloor ?? 0}（幕内 {rs?.ActFloor ?? 0}）" +
                     $" ⇒ 血量 ×{hpMult:F2}，本场 {applied} 个敌人" +
                     $"（HpScaleFactor={NotEnoughDifficultyConfig.HpScaleFactor}）");
             }
@@ -293,7 +294,7 @@ public static class MonsterDamageMultiplierPatch
                 _lastDmgKey = key;
                 MainFile.Logger.Info(
                     $"[难度] 攻击强化已应用：act={RunProgress.GetActIndex(rs)}" +
-                    $"（配置槽位 {ActLayout.ConfigLayerOf(rs?.Act, rs)}）ActFloor={rs?.ActFloor ?? 0}" +
+                    $"（配置槽位 {ActLayout.ConfigLayerOf(rs?.Act, rs)}）总层数={rs?.TotalFloor ?? 0}（幕内 {rs?.ActFloor ?? 0}）" +
                     $" ⇒ 攻击 ×{dmgMult:F2}（DmgScaleFactor={NotEnoughDifficultyConfig.DmgScaleFactor}）");
             }
 
