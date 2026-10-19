@@ -61,14 +61,49 @@ internal static class Act4ElitePlan
     private static Dictionary<MapCoord, EncounterModel> _plan = new();
 
     /// <summary>
-    ///     名单 = **全部基础精英**（层 1→3、层内按 act、act 内按池顺序），全局去重。
+    ///     名单 = **本局还没打过的**基础精英（层 1→3、层内固定顺序），全局去重。
     ///     顺序确定 ⇒ 玩家每局遇到的顺序也确定（由下往上、先 act1 后 act2、act3）。
+    ///
+    /// ## 2026-10-19 改口径（用户："打过的精英又出现在 ACT 精英试炼了"）
+    /// 旧实现是"**全部**基础精英各打一遍（12 个），与打没打过无关" ⇒ 第 1~3 幕已经打过的精英
+    /// 会在 act4 的精英试炼里**再出现一遍**。现在只取没打过的：
+    /// 先取未打集合，再按 <c>GetAllBaseElites</c> 的**固定顺序**过滤（确定性、两端一致）；
+    /// 若本局精英全打过 ⇒ 退回全名单并 Warn（否则 act4 会一个精英房都没有）。
+    /// 名单变短后 act4 的战斗房数由 <see cref="TargetCount" /> 跟着变，
+    /// 不会出现"房间比名单多、多出来的房间退回原版随机抽取（可能抽到打过的）"。
     /// </summary>
     internal static List<EncounterModel> Roster()
     {
         var result = new List<EncounterModel>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
+        try
+        {
+            var state = RunStateAccessor.GetCurrentState();
+            var unvisitedIds = new HashSet<string>(
+                RunProgress.GetUnvisitedElites(state)
+                    .Where(e => e?.Id?.Entry != null)
+                    .Select(e => e.Id.Entry!),
+                StringComparer.Ordinal);
+
+            foreach (var e in RunProgress.GetAllBaseElites())
+            {
+                var id = e?.Id?.Entry;
+                if (e == null || string.IsNullOrEmpty(id)) continue;
+                if (!unvisitedIds.Contains(id!)) continue;      // ★ 只收没打过的
+                if (seen.Add(id!)) result.Add(e);
+            }
+
+            if (result.Count > 0) return result;
+        }
+        catch (Exception ex)
+        {
+            // 边界显式：读不到历史（例如地图生成早于 run state）⇒ 退回全名单，不让建图失败
+            MainFile.Logger.Warn($"[Act4] 读取未打精英失败，退回全名单: {ex.Message}");
+        }
+
+        // 全打过了（或历史读不到）⇒ 退回全名单，保证 act4 仍有精英房
+        MainFile.Logger.Warn("[Act4] 本局精英已全部打过（或读不到历史）⇒ 精英试炼退回全名单（会出现重复）");
         foreach (var e in RunProgress.GetAllBaseElites())
         {
             var id = e?.Id?.Entry;
@@ -79,7 +114,7 @@ internal static class Act4ElitePlan
         return result;
     }
 
-    /// <summary>目标战斗房数 = 名单长度（当前版本 = 12）。</summary>
+    /// <summary>目标战斗房数 = 名单长度（= 本局还没打过的精英数；全部打过时退回 12）。</summary>
     internal static int TargetCount => Roster().Count;
 
     /// <summary>地图重建/节点类型改动后必须调用（否则表还是旧地图的）。</summary>

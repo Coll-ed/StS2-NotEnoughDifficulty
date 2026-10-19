@@ -647,31 +647,55 @@ internal static class RunProgress
         }
     }
 
+    /// <summary>主导层缓存的结果与键（见 <see cref="GetDominantEliteSourceAct" /> 的说明）。</summary>
+    private static string? _dominantKey;
+    private static int _dominantValue = 2;
+
+    /// <summary>新的一局开始时清掉缓存（否则上一局同 act + 同层数的键会命中旧值）。</summary>
+    public static void InvalidateDominantCache()
+    {
+        _dominantKey = null;
+        _dominantValue = 2;
+    }
+
     /// <summary>
     ///     未打精英里的<b>主导来源层</b>（1/2/3）——act4 用它决定视觉主题。
     /// 取不到的层不计；全取不到时返回 2（Hive，= 原来的固定背景，保证有兜底）。
     /// 纯函数、只用同步数据 → 多人两端一致。
+    ///
+    /// ## 必须缓存（2026-10-19 用户："越往后玩越卡"）
+    /// 本方法会被 <c>Act4Model</c> 的 act 属性**每帧**读到（地图底图 / 篝火背景 / BGM / 环境音都走它），
+    /// 而每次计算都要 <c>GetUnvisitedElites</c> 扫**全量历史** ⇒ 玩得越久历史越长、每帧越慢。
+    /// 实测日志里这行一次刷了几百行（DebugLogging 打开时尤其明显）。
+    /// 缓存键 = (act, TotalFloor)：只在换幕或走新房间（= 可能打过新精英）时重算。
     /// </summary>
     public static int GetDominantEliteSourceAct(RunState? state)
     {
         try
         {
+            var key = $"{GetActIndex(state)}|{state?.TotalFloor ?? -1}";
+            if (_dominantKey == key) return _dominantValue;
+
             var byAct = GetBaseElitePoolsByAct();
             var unvisited = GetUnvisitedElites(state);
-            if (unvisited.Count == 0) return 2;
-
-            var wanted = new HashSet<string>(unvisited.Select(e => e.Id.Entry), StringComparer.Ordinal);
-            var counts = new int[4]; // 1..3
-            for (var i = 0; i < byAct.Count && i < 3; i++)
-                foreach (var e in byAct[i])
-                    if (wanted.Contains(e.Id.Entry)) counts[i + 1]++;
-
             var best = 2;
-            for (var act = 1; act <= 3; act++)
-                if (counts[act] > counts[best]) best = act;
+            if (unvisited.Count > 0)
+            {
+                var wanted = new HashSet<string>(unvisited.Select(e => e.Id.Entry), StringComparer.Ordinal);
+                var counts = new int[4]; // 1..3
+                for (var i = 0; i < byAct.Count && i < 3; i++)
+                    foreach (var e in byAct[i])
+                        if (wanted.Contains(e.Id.Entry)) counts[i + 1]++;
 
-            MainFile.DebugLog(
-                $"[Act4] 主导来源层 = act{best}（未打精英分布 act1={counts[1]} act2={counts[2]} act3={counts[3]}）");
+                for (var act = 1; act <= 3; act++)
+                    if (counts[act] > counts[best]) best = act;
+
+                MainFile.DebugLog(
+                    $"[Act4] 主导来源层 = act{best}（未打精英分布 act1={counts[1]} act2={counts[2]} act3={counts[3]}）");
+            }
+
+            _dominantKey = key;
+            _dominantValue = best;
             return best;
         }
         catch (Exception ex)

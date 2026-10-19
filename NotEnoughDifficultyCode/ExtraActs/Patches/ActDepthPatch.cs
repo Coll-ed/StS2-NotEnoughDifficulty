@@ -74,7 +74,7 @@ public static class ActDepthPatch
             var state = RunStateAccessor.GetCurrentState();
             if (state == null) return;
 
-            var target = Act4ElitePlan.TargetCount;   // 全部基础精英（当前 = 12），与"打没打过"无关
+            var target = Act4ElitePlan.TargetCount;   // 本局**还没打过**的精英数（2026-10-19 起，不再固定 12）
             var baseRooms = Math.Max(Act4Model.MinAct4Rooms, Act4Model.BaseNumberOfRoomsForDepth);
 
             // ① 先按原版基准预演一次（种子预测器）

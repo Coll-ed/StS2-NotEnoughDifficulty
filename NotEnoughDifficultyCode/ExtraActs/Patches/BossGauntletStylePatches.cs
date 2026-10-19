@@ -64,6 +64,7 @@ public static class BossGauntletStylePatches
             SyntheticHearth.ResetForNewRun();
             ActBlueprint.Reset();             // 每层构筑记录归零
             ActLayout.Reset();                // 重新检测"第 4 幕是否被别的模组占用"
+            RunProgress.InvalidateDominantCache();   // 主导来源层缓存按 (act, 层数) 键，必须清
 
             // ★ 兼容 ACT 4 心脏这类模组：如果本模组的幕被别的模组插到了前面（Harmony 顺序不定），
             //   在 run 刚创建、还没有任何按 act 索引的数据时纠正为"排在末尾" ⇒ 稳定成为第 5/6 幕。
@@ -235,6 +236,11 @@ public static class BossGauntletStylePatches
 
         if (!PatchScope.IsEnabled) return;
         if (map == null) return;
+
+        // ★ 换幕 = 换了 music bank 的机会：清掉上一幕"加载失败"的记号，
+        //   否则那个失败状态是**整局**的（原版会停止跟随战斗状态），会让本模组 act4/act5 也一起没音乐。
+        //   背景与实测见 ActMusicRecovery 的注释（Act4Heart 的 bank 不在它包里 ⇒ 原版放弃 ⇒ 后续幕全哑）。
+        ActMusicRecovery.ClearFailedTrack();
 
         // ★ 异常哨兵（Warn，默认可见）：这一层**本该有**第二个 BOSS（act 上挂着 SecondBossEncounter），
         //   但传进来的这张地图**没有**第二个 BOSS 点 ⇒ 火堆无处可插（玩家看到的就是"火堆消失"）。

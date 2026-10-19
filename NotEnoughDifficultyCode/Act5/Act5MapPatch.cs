@@ -59,7 +59,7 @@ public static class Act5MapPatch
     {
         var map = state.Map!;
 
-        var target = Act4ElitePlan.TargetCount;    // 全部基础精英（12），与"打没打过"无关
+        var target = Act4ElitePlan.TargetCount;    // 本局**还没打过**的精英数（2026-10-19 起；人数变少 ⇒ 目标房数跟着变）
         if (target <= 0)
         {
             MainFile.Logger.Warn("[Act4] 精英名单为空（拿不到基础精英池），不做地图校正");
