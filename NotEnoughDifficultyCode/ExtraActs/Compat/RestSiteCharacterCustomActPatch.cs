@@ -1,4 +1,4 @@
-﻿// ReSharper disable InconsistentNaming
+// ReSharper disable InconsistentNaming
 
 using System;
 using HarmonyLib;
@@ -77,9 +77,17 @@ public static class RestSiteCharacterCustomActPatch
             if (runState == null) return;
 
             int idx = runState.CurrentActIndex; // getter 无副作用，直接读
-            if (idx != 3 && idx != 4) return; // 只处理 act4(3) / act5(4)
+            if (idx < 3) return;                // 只有 ≥3（本模组幕 / 别人的额外幕）才需要映射
 
-            int mapped = idx == 3 ? 1 : 2; // act4→Hive(1), act5→Glory(2)
+            var mapped = MappedActIndexFor();
+            if (mapped < 0)
+            {
+                MainFile.Logger.Warn(
+                    $"RestSiteCharacter: CurrentActIndex={idx} 但认不出是哪个幕" +
+                    $"（act={RunStateAccessor.GetCurrentState()?.Act?.Id?.Entry ?? "?"}）" +
+                    " ⇒ 不改值，_Ready 可能抛 'Unexpected act'");
+                return;
+            }
 
             // 直接写底层字段，绕过 setter 的清地图副作用
             if (RunStateActIndexWriter.WriteRaw(runState, mapped))
@@ -105,6 +113,46 @@ public static class RestSiteCharacterCustomActPatch
         }
     }
 
+    /// <summary>
+    ///     当前这一"篝火角色"该读哪一幕的动画名（0=overgrowth_loop / 1=hive_loop / 2=glory_loop）。
+    ///
+    /// ## 为什么不再写死 "3→1 / 4→2"（2026-11-22 实测崩溃）
+    /// `CurrentActIndex` 是**绝对**幕号：基础三幕 0~2，别人的整幕（如 THE_ENDING）会占 3，
+    /// 于是本模组的精英幕可能落到 **4**、传奇幕落到 **5** —— 写死映射就会给出错误的动画名。
+    /// 正确口径是**跟这一幕自己用的篝火美术走**：
+    /// <list type="bullet">
+    ///   <item><c>Act4Model.CustomRestSiteBackgroundPath</c> = <c>DominantSourceActModel()?.RestSiteBackgroundPath</c>
+    ///         （读不到时退回 <c>hive_rest_site</c>）；</item>
+    ///   <item><c>Act5Model</c> 固定 <c>glory_rest_site</c>。</item>
+    /// </list>
+    /// ⇒ act4 的动画名应当由 <see cref="RunProgress.GetDominantEliteSourceAct" />（主导来源层 1~3）决定，
+    /// act5 固定 glory(2)。实测那一局主导来源 = act2 ⇒ 该播 <c>hive_loop</c>，
+    /// 而旧代码给的是 <c>glory_loop</c>（错一幕）。
+    /// </summary>
+    private static int MappedActIndexFor()
+    {
+        try
+        {
+            var state = RunStateAccessor.GetCurrentState();
+            if (state == null) return -1;
+
+            if (state.Act is Act5Model) return 2;      // glory_rest_site
+
+            if (state.Act is Act4Model)
+            {
+                var layer = RunProgress.GetDominantEliteSourceAct(state); // 1~3
+                return layer is >= 1 and <= 3 ? layer - 1 : 1;            // 读不到时退回 hive
+            }
+
+            return -1;   // 别人的额外幕：不动它（原版会抛，让那一方自己处理）
+        }
+        catch (Exception ex)
+        {
+            MainFile.Logger.Warn($"RestSiteCharacter: MappedActIndexFor failed: {ex.Message}");
+            return -1;
+        }
+    }
+
     [HarmonyPriority(Priority.Last)]
     [HarmonyPostfix]
     public static void Postfix(NRestSiteCharacter __instance, int __state, Exception __exception)
@@ -120,6 +168,12 @@ public static class RestSiteCharacterCustomActPatch
 
             // 同样用 raw field write 恢复，绕过 setter
             RunStateActIndexWriter.WriteRaw(runState, __state);
+
+            // ★ 崩溃取证用：这行出现在日志里 = _Ready 这一趟**正常跑完了**；
+            //   如果日志里只有 prefix 那行、没有这行，说明进程死在 _Ready 内部（原生崩溃，无托管堆栈）。
+            MainFile.DebugLog(
+                $"RestSiteCharacter: _Ready 结束，CurrentActIndex 已恢复为 {__state}" +
+                $"{(__exception == null ? "" : $"（_Ready 期间抛过 {__exception.GetType().Name}）")}");
         }
         catch (Exception ex)
         {
