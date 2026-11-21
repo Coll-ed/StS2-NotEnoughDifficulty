@@ -9,7 +9,6 @@ using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
-using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
@@ -25,15 +24,21 @@ namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 ///     d. prefix return false 跳过原方法
 ///     3. 异步等待结果：
 ///     - 全部 ack 成功 → log + 反射 Invoke 原方法 → 正常开 run
-///     - 超时（任何一个 client 没 ack）→ popup + 不调原方法 → lobby 卡 ready
+///     - 超时（有 client 没 ack）→ **照常开 run**（Warn）：对方的 ack 缺失只代表"它不参与同步"
+///       —— AI 队友 / 没装本模组 / 版本不同都归这一类；旧行为是弹窗 + 不开局，实测把
+///       "单人带 AI 队友"这种正常玩法直接卡死（用户 2026-11-22 截图报障），已改掉。
 ///     ## ConfigSyncManager.IsReenteringBeginRun
 ///     标记当前是异步 task 触发的二次调用（用反射跑原方法时）。这次进入 prefix 时直接放行，
 ///     避免递归触发 sync。两条 lobby 路径共用同一个 flag——OK 因为同时只可能有一条路径在跑。
 /// </summary>
 internal static class ConfigSyncFlow
 {
-    /// <summary>等 client ack 的超时（毫秒）。3 秒足够正常网络传输 + apply。</summary>
-    public const int AckTimeoutMs = 3000;
+    /// <summary>等 client ack 的超时（毫秒）。局域网/Steam 一个来回 &lt; 300 ms，1.5 s 足够；</summary>
+    /// <remarks>
+    ///     不等更久的原因：等不到 ack 的情况（AI 队友 / 没装本模组 / 版本不同）本来就不会有回包，
+    ///     多等只是让"开始游戏"按钮白卡几秒。超时后按"对方不参与同步"放行，见 <see cref="WaitAcksAndContinueAsync" />。
+    /// </remarks>
+    public const int AckTimeoutMs = 1500;
 
     /// <summary>
     ///     Host 端入口：broadcast 配置 + 异步等 ack + 完成后回调 originalInvoker。
@@ -87,12 +92,13 @@ internal static class ConfigSyncFlow
             if (!result.AllAcked)
             {
                 var missing = string.Join(", ", result.MissingClients);
-                MainFile.Logger.Error(
-                    $"[Sync] Config sync FAILED (syncId={syncId}): timeout waiting for ack from clients [{missing}]. " +
-                    "These clients likely have an outdated mod version (no EarlyRegister patch). Run will NOT start.");
-
-                ShowIncompatibilityPopup(result.MissingClients);
-                return;
+                // ★ 2026-11-22 改：**不再因为这个卡住开局**（用户实测：单人带 AI 队友 / 别的非本模组玩家加入时，
+                //   对方根本不会回 ack ⇒ 原本直接 block + 弹"mod 版本太旧"，整局开不了）。
+                //   现在的口径：没 ack 就当"对方不参与同步"（AI / 没装本模组 / 版本不同都归这一类），
+                //   照常开 run，对方保留自己的配置；版本真不一致时的偏差由 ConfigSyncManager 的 key 级 ignore 兜底。
+                MainFile.Logger.Warn(
+                    $"[Sync] syncId={syncId} 未收到 [{missing}] 的 ack（可能是 AI/机器人玩家、没装本模组、或版本不同）" +
+                    "⇒ 照常开始本局，该玩家不会套用主机配置");
             }
 
             // 检查版本一致性
@@ -106,7 +112,7 @@ internal static class ConfigSyncFlow
                         $"[Sync] Client {id} version='{ack.ClientModVersion}' differs from host='{MainFile.ModVersion}'. " +
                         $"Applied {ack.AppliedDoubles}D+{ack.AppliedBools}B / Skipped {ack.SkippedDoubles}D+{ack.SkippedBools}B. " +
                         "Run will start but state divergence is possible during gameplay.");
-            else
+            else if (result.AllAcked)
                 MainFile.Logger.Info(
                     $"[Sync] All {result.ReceivedAcks.Count} clients acked sync " +
                     $"(syncId={syncId}, version={MainFile.ModVersion}). Proceeding to begin run.");
@@ -168,32 +174,7 @@ internal static class ConfigSyncFlow
             MainFile.Logger.Error($"[Sync] EarlyHandleCustomMessage failed: {ex}");
         }
     }
-
-    private static void ShowIncompatibilityPopup(IReadOnlyCollection<ulong> missingClients)
-    {
-        try
-        {
-            var clientList = string.Join("\n", missingClients.Select(id => $"  • {id}"));
-            var title = "Mod 版本不兼容";
-            var body =
-                $"以下玩家的 NotEnoughDifficulty mod 版本太旧，无法同步配置：\n\n{clientList}\n\n" +
-                $"主机版本：{MainFile.ModVersion}\n\n" +
-                "请让对方升级到与主机相同的 mod 版本后再开始游戏。";
-
-            var popup = NErrorPopup.Create(title, body, false);
-            if (popup != null)
-                NModalContainer.Instance?.Add(popup);
-            else
-                // popup 创建失败（test mode 之类）退化为 log
-                MainFile.Logger.Error($"[Sync] {title}: {body}");
-        }
-        catch (Exception ex)
-        {
-            MainFile.Logger.Error($"[Sync] ShowIncompatibilityPopup failed: {ex}");
-        }
-    }
 }
-
 // ============================================================
 // EarlyRegisterCustomMessageHandlerPatch（两条 lobby 路径各一份，软匹配多个 ctor）
 // ============================================================
