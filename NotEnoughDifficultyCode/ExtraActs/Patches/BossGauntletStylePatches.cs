@@ -38,16 +38,30 @@ namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 /// | `MapSelectionSynchronizerPlayerVotedForMapCoordPrefix` | 同名 | 多人投票坐标重映射 |
 /// | `RunManagerLoadIntoLatestMapCoordPrefix` | 同名 | 读档落在合成节点上 |
 /// | `NRestSiteRoomOnProceedButtonReleasedPrefix` | 同名 | 离开火堆收尾 |
-/// | `NMerchantRoomHideScreenPrefix` | 同名 | 离开商店收尾 |
+/// | `NMerchantRoomOnProceedButtonReleasedPrefix` | 曾对 `HideScreen` | 离开商店收尾（v0.113.1 起 `HideScreen` 已并入 `OnProceedButtonReleased`） |
 ///
 /// ## 本模组额外加的一道闸（BossGauntlet 没有）
 /// | 本文件 | 作用 |
 /// |---|---|
 /// | `NMapPointOnReleasePrefix` | **没进火堆也能进第二个 BOSS**：`OnRelease` 第一行就是 `if (!IsTravelable) return;`，
 /// 这里在它之前把第二个 BOSS 节点提成 `Travelable`（见 <see cref="SyntheticHearth.TryAllowSecondBossClick" />） |
+///
+/// ## 为什么拆成 4 个 patch 类
+/// Harmony 的 `CreateClassProcessor(type).Patch()` 是**按类**处理的：一个类里只要有一个方法的目标
+/// 对不上（游戏改版改名 / 删方法），整类 patch 全部被跳过，日志只有一行 `Patch class ... failed`。
+/// 2026-11-21 游戏升到 v0.113.1 时 `NMerchantRoom.HideScreen` 被并入 `OnProceedButtonReleased`，
+/// 就是这么一次性带走了**全部**地图注入 ⇒ 玩家看到「双 BOSS 之间的火堆/商店消失」、
+/// 「act5 前两个伪装 BOSS 变成普通小怪房」。拆开之后同类事故只影响那一两个 hook，日志直接点名到类。
+///
+/// | 类 | 职责 |
+/// |---|---|
+/// | `BossGauntletRunPatches` | 新 run 初始化 / 建图前赋第二个 boss |
+/// | `BossGauntletMapScreenPatches` | 地图界面注入、可通行性、点击闸 |
+/// | `BossGauntletTravelPatches` | 进房、读档、多人投票、奖励屏"继续" |
+/// | `SyntheticRoomExitPatches` | 离开火堆 / 商店时的序列收尾 |
 /// </summary>
 [HarmonyPatch]
-public static class BossGauntletStylePatches
+public static class BossGauntletRunPatches
 {
     // ============================================================
     // 1) 新 run：把"这一局要不要双 boss / 插哪些房间"记进 run state
@@ -192,9 +206,15 @@ public static class BossGauntletStylePatches
         });
     }
 
-    // ============================================================
-    // 3) 地图界面建好后：注入合成节点（视觉 + 连通 + 连线）
-    // ============================================================
+}
+
+// ============================================================
+// 3) 地图界面建好后：注入合成节点（视觉 + 连通 + 连线）
+//    单独成类：这里是改版最容易打中的地方，失败不能连带旅行/收尾那几处。
+// ============================================================
+[HarmonyPatch]
+public static class BossGauntletMapScreenPatches
+{
 
     /// <summary>
     ///     <c>SetMap</c> **前缀**：在原版（以及别的 mod 的 IL hook）重建地图之前，
@@ -395,10 +415,15 @@ public static class BossGauntletStylePatches
             () => SyntheticHearth.TryAllowSecondBossClick(__instance));
     }
 
-    // ============================================================
-    // 5) 第一个 boss 打完点"继续"：合成房间（act1~4）在这里收尾
-    //    （act5 的三个房间全走原生流程，不在这里特殊处理）
-    // ============================================================
+}
+
+// ============================================================
+// 5) 第一个 boss 打完点"继续"：合成房间（act1~4）在这里收尾
+//    （act5 的三个房间全走原生流程，不在这里特殊处理）
+// ============================================================
+[HarmonyPatch]
+public static class BossGauntletTravelPatches
+{
 
     [HarmonyPatch(typeof(RunManager), "ProceedFromTerminalRewardsScreen")]
     [HarmonyPrefix]
@@ -535,9 +560,15 @@ public static class BossGauntletStylePatches
         return false;
     }
 
-    // ============================================================
-    // 9/10) 离开合成房间时的收尾
-    // ============================================================
+}
+
+// ============================================================
+// 9/10) 离开合成房间时的收尾
+//    单独成类：这两个目标都是原版的 private 房间方法，改版时最容易改名/被并入别处。
+// ============================================================
+[HarmonyPatch]
+public static class SyntheticRoomExitPatches
+{
 
     [HarmonyPatch(typeof(MegaCrit.Sts2.Core.Nodes.Rooms.NRestSiteRoom), "OnProceedButtonReleased")]
     [HarmonyPrefix]
@@ -549,13 +580,47 @@ public static class BossGauntletStylePatches
             () => SyntheticHearth.CompleteSyntheticRoom(MapPointType.RestSite));
     }
 
-    [HarmonyPatch(typeof(MegaCrit.Sts2.Core.Nodes.Rooms.NMerchantRoom), "HideScreen")]
+    /// <summary>
+    ///     <c>NMerchantRoom.OnProceedButtonReleased</c> 前缀：离开商店时推进合成房间序列。
+    ///
+    /// ## v0.113.1 迁移（2026-11-21，用户报「双 BOSS 中间的火堆/商店不见了」）
+    /// 原目标 <c>NMerchantRoom.HideScreen(NButton _)</c> 在这个版本里**已被删除**（API dump 查不到），
+    /// 逻辑并入了 <c>OnProceedButtonReleased</c>：
+    /// <code>
+    ///   if (MerchantFtueCheck()) return;   // 首次进店的教程弹窗 ⇒ **不放行**，并没有离开商店
+    ///   RunManager.Instance.Proceed();
+    /// </code>
+    /// 失效的只有这一条目标，但 Harmony **按类**处理 ⇒ 整个类被跳过 ⇒ 火堆/商店注入全部没跑。
+    /// </summary>
+    [HarmonyPatch(typeof(NMerchantRoom), "OnProceedButtonReleased")]
     [HarmonyPrefix]
     [HarmonyPriority(Priority.High)]
-    public static void NMerchantRoomHideScreenPrefix()
+    public static void NMerchantRoomOnProceedButtonReleasedPrefix(NMerchantRoom __instance)
     {
         if (!PatchScope.IsEnabled) return;
-        PatchScope.Run(nameof(NMerchantRoomHideScreenPrefix),
-            () => SyntheticHearth.CompleteSyntheticRoom(MapPointType.Shop));
+        PatchScope.Run(nameof(NMerchantRoomOnProceedButtonReleasedPrefix), () =>
+        {
+            // 教程弹窗那条分支会提前 return（人还留在商店）⇒ 此时推进序列会**跳掉一间**
+            if (MerchantFtuePending(__instance)) return;
+            SyntheticHearth.CompleteSyntheticRoom(MapPointType.Shop);
+        });
+    }
+
+    /// <summary>
+    ///     <c>NMerchantRoom.MerchantFtueCheck()</c>（private，true = 刚弹过教程、本次不放行）。
+    ///     反射拿不到就按 false 处理：行为退回"按下即收尾"，与旧版一致。
+    /// </summary>
+    private static bool MerchantFtuePending(NMerchantRoom room)
+    {
+        try
+        {
+            var check = AccessTools.Method(room.GetType(), "MerchantFtueCheck");
+            return check?.Invoke(room, null) is true;
+        }
+        catch (Exception ex)
+        {
+            MainFile.DebugLog($"[Gauntlet] MerchantFtueCheck 反射失败（按未弹窗处理）: {ex.GetType().Name}");
+            return false;
+        }
     }
 }

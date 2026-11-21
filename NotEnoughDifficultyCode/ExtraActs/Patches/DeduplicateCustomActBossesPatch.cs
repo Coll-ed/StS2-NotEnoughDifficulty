@@ -37,7 +37,7 @@ public static class DeduplicateCustomActBossesPatch
         // "图标是沙漏、实际打的是幕布巨兽"（图标与内容互换）。
         //
         // act4 的顶端 boss 现在由 EnsureAct4TopBoss 在建图**之前**一次定稿
-        // （BossGauntletStylePatches 的 GenerateMap prefix 调用）。
+        // （BossGauntletRunPatches 的 GenerateMap prefix 调用）。
         // 这里直接返回，绝不再改，保证图标与实际内容一致。
         return;
 
@@ -87,7 +87,7 @@ public static class DeduplicateCustomActBossesPatch
     }
 
     /// <summary>
-    ///     在建图**之前**把 act4 的顶端 boss 定稿（供 BossGauntletStylePatches 的
+    ///     在建图**之前**把 act4 的顶端 boss 定稿（供 BossGauntletRunPatches 的
     ///     GenerateMap prefix 调用）。与 Harmony postfix 里的逻辑同一份，避免两处漂移。
     /// </summary>
     public static void EnsureAct4TopBoss(MegaCrit.Sts2.Core.Models.ActModel act4, RunState state)
@@ -110,7 +110,7 @@ public static class DeduplicateCustomActBossesPatch
             //   [Gauntlet] 建图前补救: runState.Act 补设第二 boss='AEONGLASS_BOSS'（该层池 26 个）
             //   [Act4] 建图前定稿顶端 boss: 'KNOWLEDGE_DEMON_BOSS' -> 'AEONGLASS_BOSS'   ← 撞了
             // 根因：上面的 used 只收了 act1~3 的 boss，没算"同层已经定好的第二 boss"。
-            // 时序上 DoubleBossConfigPatch / BossGauntletStylePatches 的补救都在本函数**之前**
+            // 时序上 DoubleBossConfigPatch / BossGauntletRunPatches 的补救都在本函数**之前**
             // （本函数由 GenerateMap prefix 调用），所以此刻能读到它。
             //
             // ⚠️ 这里**不做**任何"保护某一层"的硬编码（早期版本曾硬性排除 act3 的 boss，

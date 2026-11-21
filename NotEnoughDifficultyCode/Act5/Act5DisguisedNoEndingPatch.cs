@@ -1,5 +1,4 @@
 using HarmonyLib;
-using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -57,7 +56,10 @@ internal static class Act5DisguisedNoEndingPatch
         PatchScope.Run(nameof(Act5DisguisedNoEndingPatch), () =>
         {
             MainFile.DebugLog("[Act5] 伪装BOSS 奖励界面「继续」→ 不结束本幕：按原版双BOSS中间那步关界面回地图");
-            TaskHelper.RunSafely(RunManager.Instance.ProceedFromTerminalRewardsScreen());
+            // v0.113.1 起 ProceedFromTerminalRewardsScreen 拆成 void + Async 两个：
+            // void 版内部就是 TaskHelper.RunSafely(Async 版)，所以这里直接调 void 版即可
+            //（这也正是原版奖励界面按钮调的那一个 ⇒ 我们的 prefix 在同一路径上）。
+            RunManager.Instance.ProceedFromTerminalRewardsScreen();
         });
 
         return false;   // 跳过原版（否则它会 SetLocalPlayerReady → 进结局）

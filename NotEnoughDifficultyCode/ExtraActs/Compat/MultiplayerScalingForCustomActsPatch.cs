@@ -1,10 +1,9 @@
-﻿// ReSharper disable InconsistentNaming
+// ReSharper disable InconsistentNaming
 // __result 是 Harmony 的特殊参数名约定（用来读写原方法返回值），不能改成 result——
 // 否则 PatchAll 抛 "Parameter 'result' not found"，整个 mod 加载失败。
 
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.Singleton;
 using MegaCrit.Sts2.Core.Rooms;
 
 namespace NotEnoughDifficulty.NotEnoughDifficultyCode;

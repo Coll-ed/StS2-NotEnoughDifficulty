@@ -678,7 +678,7 @@ act.SetSecondBossEncounter(候选[index])
 | 第一个 boss 打完的"继续" | `RunManager.ProceedFromTerminalRewardsScreen` prefix |
 | 读档落在合成节点上 | `RunManager.LoadIntoLatestMapCoord` prefix |
 | 多人投票坐标 | `MapSelectionSynchronizer.PlayerVotedForMapCoord` prefix |
-| 离开合成房间 | `NRestSiteRoom.OnProceedButtonReleased` / `NMerchantRoom.HideScreen` prefix |
+| 离开合成房间 | `NRestSiteRoom.OnProceedButtonReleased` / `NMerchantRoom.OnProceedButtonReleased` prefix（v0.113.1 起 `NMerchantRoom.HideScreen` 已并入后者） |
 
 还配了 `NMapScreen.RecalculateTravelability` postfix 补可通行性。
 

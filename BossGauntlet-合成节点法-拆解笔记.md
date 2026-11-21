@@ -136,7 +136,9 @@ index = 某个把 key 散列成 [0, candidateCount) 的稳定函数
 - `RunManagerProceedFromTerminalRewardsScreenPrefix` —— 第一个 boss 打完的"继续"按钮
 - `RunManagerLoadIntoLatestMapCoordPrefix` —— 读档时若停在合成节点上要恢复
 - `MapSelectionSynchronizerPlayerVotedForMapCoordPrefix` —— 多人投票坐标重映射
-- `NRestSiteRoomOnProceedButtonReleasedPrefix` / `NMerchantRoomHideScreenPrefix` —— 离开合成房间时收尾
+- `NRestSiteRoomOnProceedButtonReleasedPrefix` / `NMerchantRoomOnProceedButtonReleasedPrefix` —— 离开合成房间时收尾
+  （v0.113.1 起 `NMerchantRoom.HideScreen` 已被游戏并入 `OnProceedButtonReleased`；这类"原版 private 方法改名"
+  会让**整个 patch 类**被 Harmony 跳过，所以四个职责已拆成独立的四个 `[HarmonyPatch]` 类）
 
 **这说明"往地图里插节点"远不止画出来**：进入、离开、读档、多人投票四个流程都要接。
 

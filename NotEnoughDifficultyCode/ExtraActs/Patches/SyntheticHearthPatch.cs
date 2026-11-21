@@ -842,6 +842,8 @@ internal static class SyntheticHearth
 
 // ============================================================
 // 注意：本文件只保留 SyntheticHearth 工具类。
-// 所有 Harmony patch 入口都搬到了 BossGauntletStylePatches.cs
+// 所有 Harmony patch 入口都搬到了 BossGauntletStylePatches.cs（现按职责拆成四个类：
+// BossGauntletRunPatches / BossGauntletMapScreenPatches / BossGauntletTravelPatches /
+// SyntheticRoomExitPatches —— 一个类里某个目标失效只废掉那个类，不再连带全部地图注入）。
 // （1:1 对齐工坊模组 Boss Gauntlet 的 10 个 patch 面）。
 // ============================================================

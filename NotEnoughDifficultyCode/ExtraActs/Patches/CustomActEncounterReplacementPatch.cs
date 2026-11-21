@@ -4,6 +4,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Acts;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Rooms;
+using MegaCrit.Sts2.Core.Unlocks;
 
 namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 
@@ -24,8 +25,16 @@ namespace NotEnoughDifficulty.NotEnoughDifficultyCode;
 /// ## Harmony ordering
 /// <c>[HarmonyAfter("BaseLib")]</c>：BaseLib 的 ActModelGenerateRoomsPatch 也 patch 同名方法
 /// （处理 Ancient 注入），它对 encounter 列表不动，跟我们正交；显式声明 After 保证我们最后改。
+///
+/// ## 为什么把参数类型写死（v0.113.1，2026-11-21）
+/// 0.113 给 <c>ActModel</c> 又加了一个重载：<c>GenerateRooms(RunState)</c>，原来那个
+/// <c>GenerateRooms(Rng, UnlockState, bool)</c> 也变成了四参数 <c>(Rng, UnlockState, bool, bool isBlitz)</c>。
+/// 只给方法名 ⇒ <c>Ambiguous match found</c> ⇒ **整个 patch 类被跳过**（act4 的精英池就不会被我们填充）。
+/// 目标锁定四参数那个：<c>GenerateRooms(RunState)</c> 的实现就是"取出 rng/unlockState/人数/模式后转调它"
+/// （IL 实证），所以锁定内层等于两条路都覆盖。
 /// </summary>
-[HarmonyPatch(typeof(ActModel), nameof(ActModel.GenerateRooms))]
+[HarmonyPatch(typeof(ActModel), nameof(ActModel.GenerateRooms),
+    typeof(Rng), typeof(UnlockState), typeof(bool), typeof(bool))]
 [HarmonyAfter("BaseLib")]
 public static class CustomActEncounterReplacementPatch
 {
