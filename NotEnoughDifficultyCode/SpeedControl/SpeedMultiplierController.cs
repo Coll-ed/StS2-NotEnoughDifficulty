@@ -150,19 +150,34 @@ public static class SpeedMultiplierController
                 // ② 兜底：定帧久到不像定帧（对面没恢复）⇒ 强制拉回，避免整个游戏停摆
                 if (now - _frozenSinceMsec > UnwedgeMs)
                 {
+                    MainFile.Logger.Warn(
+                        $"[Speed] 定帧持续 {now - _frozenSinceMsec} ms（TimeScale 停在 {current:F3}）⇒ " +
+                        $"强制恢复到 {target:F2}（防止游戏时间被永久冻住；正常 hit-stop 只有几十毫秒）");
                     _frozenSinceMsec = 0;
                     Engine.TimeScale = target;
-                    MainFile.Logger.Warn(
-                        $"[Speed] 定帧持续超过 {UnwedgeMs} ms（TimeScale 停在 {current:F3}）⇒ 强制恢复到 {target:F2}" +
-                        "（防止游戏时间被永久冻住）");
                 }
 
                 return;
             }
 
-            _frozenSinceMsec = 0;
+            // ③ 定帧刚结束：报一次真实时长（玩家反馈"死亡的伤害会卡半天的死亡动画"就是靠这条量化）
+            if (_frozenSinceMsec != 0)
+            {
+                var frozenMs = Time.GetTicksMsec() - _frozenSinceMsec;
+                _frozenSinceMsec = 0;
+                if (frozenMs > SlowFreezeWarnMs)
+                {
+                    MainFile.Logger.Warn(
+                        $"[Speed] 定帧结束，但持续了 {frozenMs} ms（恢复为 TimeScale={current:F3}）" +
+                        "⇒ 这段就是玩家感受到的「卡住」；定帧方通常是 MeleeAttack(HitStop/Murder) 或其它缓放 mod");
+                }
+                else
+                {
+                    MainFile.Logger.Info($"[Speed] 定帧结束：{frozenMs} ms（恢复为 TimeScale={current:F3}）");
+                }
+            }
 
-            // ③ 常规：只在目标值确实不同时写一次（配置改动 < 16ms 内生效）
+            // ④ 常规：只在目标值确实不同时写一次（配置改动 < 16ms 内生效）
             if (Math.Abs(current - target) > Epsilon) Engine.TimeScale = target;
         }
         catch (Exception ex)
@@ -174,6 +189,13 @@ public static class SpeedMultiplierController
     /// <summary>定帧开始的时刻（ms）；0 = 当前没有定帧。</summary>
     private static ulong _frozenSinceMsec;
 
-    /// <summary>定帧持续多久就认为"对面没恢复、必须兜底"（毫秒）。正常 hit-stop 远小于它。</summary>
-    private const double UnwedgeMs = 3000.0;
+    /// <summary>
+    ///     定帧持续多久就认为"对面没恢复、必须兜底"（毫秒）。
+    ///     正常 hit-stop 只有几十毫秒（MeleeAttack 默认量级），1.5 s 已经远超任何正当定帧 ⇒
+    ///     这里取 1.5 s：既是兜底下限，也是"我们最多能把游戏冻多久"的上限。
+    /// </summary>
+    private const double UnwedgeMs = 1500.0;
+
+    /// <summary>定帧结束时超过这个时长就打 Warn（玩家反馈"死亡动画卡半天"就是靠这条量化）。</summary>
+    private const double SlowFreezeWarnMs = 500.0;
 }
