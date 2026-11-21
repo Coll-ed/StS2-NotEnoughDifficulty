@@ -76,33 +76,6 @@ internal static class Act4EliteBackgroundByLayerPatch
 
 }
 
-/// <summary>act4 地图节点图标：黄色 → 淡紫（延迟一帧，等节点自己把贴图挂上）。</summary>
-internal static class Act4MapIconRecolor
-{
-    internal static void Schedule(NMapScreen screen)
-    {
-        Callable.From(() =>
-        {
-            try
-            {
-                var pointDict = Traverse.Create(screen)
-                    .Field("_mapPointDictionary")
-                    .GetValue<Dictionary<MegaCrit.Sts2.Core.Map.MapCoord, NMapPoint>>();
-                if (pointDict == null) return;
-
-                var count = 0;
-                foreach (var node in pointDict.Values)
-                {
-                    if (node == null) continue;
-                    count += ActVisualTheme.RecolorTreeYellowToLavender(node);
-                }
-
-                MainFile.DebugLog($"[Act4] 地图节点图标黄→淡紫：改了 {count} 张贴图");
-            }
-            catch (Exception ex)
-            {
-                MainFile.Logger.Warn($"[Act4] 节点图标改色失败: {ex.Message}");
-            }
-        }).CallDeferred();
-    }
-}
+// act4 地图节点图标「黄→淡紫」的 Act4MapIconRecolor 已删除（2026-11-22）：
+// 它把节点的 TextureRect 换成空白贴图 ⇒ 地图上房间图标全消失（用户截图实证）。
+// 对应工具方法 RecolorTreeYellowToLavender / RecolorYellowToLavender 也已从 ActVisualTheme 删掉。

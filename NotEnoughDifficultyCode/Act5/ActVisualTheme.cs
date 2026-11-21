@@ -454,69 +454,9 @@ internal static class ActVisualTheme
 
         img.SetData(w, h, false, Image.Format.Rgba8, data);
     }
+    // 处理 ⑤（地图节点图标 黄→淡紫）已于 2026-11-22 删除：
+    // 它在 v0.113.1 里把节点 TextureRect 换成空白贴图 ⇒ 地图房间图标全消失（用户截图实证）。
     // ============================================================
-    // 处理 ⑤：地图节点图标 黄色 → 淡紫（act4 用户口径）
-    // ============================================================
-
-    /// <summary>把一棵子树里的 TextureRect 贴图做"黄→淡紫"，返回改掉的贴图数。</summary>
-    public static int RecolorTreeYellowToLavender(Node root)
-    {
-        var count = 0;
-        foreach (var rect in FindTextures(root))
-        {
-            if (rect.Texture == null) continue;
-            var themed = RecolorYellowToLavender(rect.Texture);
-            if (themed == null) continue;
-            rect.Texture = themed;
-            count++;
-        }
-
-        return count;
-    }
-
-    private static IEnumerable<TextureRect> FindTextures(Node root)
-    {
-        foreach (var child in root.GetChildren())
-        {
-            if (child is TextureRect rect) yield return rect;
-            foreach (var deep in FindTextures(child)) yield return deep;
-        }
-    }
-
-    /// <summary>黄色系像素 → 淡紫（保留明暗，色相旋到 275°、降一点饱和）。其它颜色不动。</summary>
-    public static ImageTexture? RecolorYellowToLavender(Texture2D src)
-    {
-        try
-        {
-            return GetOrBuild($"icon|act4lav|{src.GetInstanceId()}", src, img =>
-            {
-                var w = img.GetWidth();
-                var h = img.GetHeight();
-                var data = img.GetData();
-                if (data.Length < w * h * 4) return;
-
-                for (var i = 0; i < w * h * 4; i += 4)
-                {
-                    if (data[i + 3] == 0) continue;
-                    RgbToHsv(data[i], data[i + 1], data[i + 2], out var hue, out var sat, out var val);
-                    if (sat < 0.18f) continue;                       // 灰/白不动（描边）
-                    if (hue < 25f || hue > 70f) continue;            // 只动黄/橙区间
-
-                    HsvToRgb(275f, Mathf.Clamp(sat * 0.72f, 0f, 1f), val, out var r, out var g, out var b);
-                    data[i] = r;
-                    data[i + 1] = g;
-                    data[i + 2] = b;
-                }
-
-                img.SetData(w, h, false, Image.Format.Rgba8, data);
-            });
-        }
-        catch (Exception ex)
-        {
-            MainFile.Logger.Warn($"[Theme] 黄→淡紫失败: {ex.Message}");
-            return null;
-        }
-    }
     // ============================================================
     // 小工具：值噪声 + HSV
     // ============================================================
