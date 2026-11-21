@@ -325,12 +325,13 @@ public static class BossGauntletMapScreenPatches
             var ok = SyntheticHearth.InjectVisuals(__instance, map);
             MainFile.DebugLog($"[Gauntlet] 注入结果 = {ok}");
 
-            // ★ 2026-11-22 移除：act4 地图节点图标「黄→淡紫」改色（原 Act4MapIconRecolor.Schedule）。
-            //   实证（用户截图 + 日志 34920~34938）：这一版里它在 SetMap 之后把每个节点的 TextureRect
-            //   换成了**空白贴图**（646 张贴图被换）⇒ 玩家看到的是"地图上房间全没了，只剩 BOSS 图标和虚线"。
-            //   BOSS 节点不在 _mapPointDictionary 里所以幸免 —— 正好对上"除了 BOSS 那个图标，其它全空白"。
-            //   改色只是妆，不能拿地图可读性换 ⇒ 整条删掉（见 Act4VisualPatches / ActVisualTheme 的同步删除）。
-            //   act4 的**纹路**变色不受影响：Act4MapStripeTint + ActVisualTheme.ForAct4 走的是底图重绘，另一条路。
+            // ★ 2026-09-22「叫醒」：act4 地图节点图标"黄色 → 淡紫"（用户口径：问号/商店/火堆/精英/BOSS 的
+            //   底图黄色都换成淡紫）。Act4MapIconRecolor.Schedule 同样是孤儿方法（零调用点），一并接回；
+            //   它内部自己 CallDeferred（节点贴图是在各自 _Ready 里挂的，必须等一帧）。
+            //
+            //   注：act4 的**纹路**变色走另一条路（Act4MapStripeTint 状态 + ActVisualTheme.ForAct4 重绘底图，
+            //   因为实测三个 rect 的 Material 默认是 null、改 uniform 无效），两条互不干扰。
+            if (st?.Act is Act4Model) Act4MapIconRecolor.Schedule(__instance);
         });
     }
 
