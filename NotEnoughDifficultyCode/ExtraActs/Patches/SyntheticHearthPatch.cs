@@ -149,21 +149,27 @@ internal static class SyntheticHearth
     }
 
     // ============================================================
-    // 合成房间的**真实地图点**（2026-11-22：修"只有合成火堆崩"）
+    // 合成房间的**真实地图点**（2026-11-22）
+    // 职责已拆分：本区只负责"坐标能解析成点"，串链在 LinkChain（视觉节点登记之后）。
     // ============================================================
 
     /// <summary>每张地图各自的合成点表（地图实例为键 ⇒ 换图自动失效）。</summary>
     private static readonly ConditionalWeakTable<ActMap, Dictionary<MapCoord, MapPoint>> SynthDataPoints = new();
 
     /// <summary>
-    ///     把合成房间补成**真实的地图点**，并串进链：Boss → 合成0 → 合成1 → … → 第二 BOSS。
+    ///     给合成房间建一份**点表**：<c>ActMap.GetPoint(coord)</c> 从此能解析到它们。
     ///
-    /// ## 为什么必须补（用户实测：普通火堆不崩，只有双 BOSS 之间那个合成火堆崩）
-    /// 合成房间以前只存在于"视觉节点 + 我们自己的坐标公式"里：`ActMap.GetPoint(coord)` 对它返回 **null**。
-    /// 于是任何"按当前坐标取地图点"的代码（原版存读档、已访问坐标校验、其它 mod 的休息点钩子）
-    /// 都会拿到 null ⇒ 进火堆瞬间进程直接死（没有托管堆栈，日志只有一句 Preloading）。
-    /// 补点 + <see cref="SyntheticPointResolvePatch" />（GetPoint 兜底解析）之后，
-    /// "坐标解析不到点"这一整类问题消失，进房/读档/校验都能拿到合法 MapPoint。
+    /// ## 为什么要有（实测依据，不是推测）
+    /// 合成房间只存在于"视觉节点 + 我们的坐标公式"里时，`GetPoint(coord)` 对它返回 **null**，
+    /// 任何"按坐标取点"的代码（存读档、已访问坐标校验、其它 mod 的休息点钩子）都拿不到东西。
+    /// 补点表 + <see cref="SyntheticPointResolvePatch" />（GetPoint 兜底）之后这一类 null 消失。
+    ///
+    /// ## ⚠️ 本方法**不串链**（2026-11-22 恐惧模式实机崩溃教训）
+    /// 它会被 `GetPoint` 的兜底 postfix 调用 ⇒ **地图生成阶段**就会跑，那时地图界面还没有任何视觉节点。
+    /// 若在这里把合成点挂进数据链，`SetMap` 内部 `DrawPaths` 遍历子节点必抛
+    /// `InvalidOperationException: Map point child with coord … is not in the map point dictionary!`
+    /// （恐惧模式起手即崩：`NDreadScreen → NGame.StartRun → EnterAct → GenerateMap`）。
+    /// 串链只允许在视觉节点登记进 `_mapPointDictionary` 之后 —— 见 <see cref="LinkChain" />。
     /// </summary>
     public static void EnsureDataPoints(ActMap map)
     {
@@ -191,22 +197,14 @@ internal static class SyntheticHearth
                     $"[SynthHearth] 已给 {dict.Count} 个合成房间补上真实地图点（GetPoint 现在能解析它们）");
             }
 
-            // 串链（幂等）：SetMap 前缀的 CleanupInjected 会把链拆掉，所以每次都要补回来
-            MapPoint? prev = map.BossMapPoint;
-            for (var i = 0; i < types.Count && prev != null; i++)
-            {
-                var coord = GetCoord(map, i);
-                if (!dict.TryGetValue(coord, out var point)) continue;
-                prev.AddChildPoint(point);
-                point.parents.Add(prev);
-                prev = point;
-            }
-
-            if (prev != null && map.SecondBossMapPoint is { } second)
-            {
-                prev.AddChildPoint(second);
-                second.parents.Add(prev);
-            }
+            // ⚠️ 这里**只建点表，绝不串链**（2026-11-22 恐惧模式实机崩溃教训）：
+            //    本方法会被 `ActMap.GetPoint` 的兜底 postfix 调用，即**地图生成阶段**就会被调用，
+            //    那时 NMapScreen 还没有任何视觉节点。一旦此时把合成点挂进数据链，
+            //    SetMap 内部 DrawPaths 遍历子节点就会抛：
+            //      InvalidOperationException: Map point child with coord MapCoord (53, 67)
+            //      is not in the map point dictionary!
+            //    （恐惧模式起手即崩：NDreadScreen → NGame.StartRun → EnterAct → GenerateMap）
+            //    串链只允许在**视觉节点已登记进 _mapPointDictionary 之后**进行 —— 见 LinkChain。
         }
         catch (Exception ex)
         {
@@ -235,6 +233,77 @@ internal static class SyntheticHearth
         }
 
         return false;
+    }
+
+    /// <summary>
+    ///     把合成点串进数据链：<c>Boss → 合成0 → … → 第二 BOSS</c>。
+    ///
+    /// **硬性前置条件**：每个合成点都已经在 <c>_mapPointDictionary</c> 里有视觉节点。
+    /// 否则 <c>NMapScreen.SetMap</c> → <c>DrawPaths</c> 遍历子节点时会抛
+    /// <code>
+    /// InvalidOperationException: Map point child with coord MapCoord (53, 67)
+    ///   is not in the map point dictionary!
+    /// </code>
+    /// 这正是 2026-11-22「恐惧模式（Dread）起手进图就弹内部错误」的成因：当时是
+    /// <see cref="EnsureDataPoints" /> 在**地图生成阶段**（GetPoint 兜底被调用时）就把链串上了，
+    /// 而那时地图界面还一个视觉节点都没有。现在串链只在这里做，且先逐个核对字典项。
+    /// </summary>
+    private static void LinkChain(
+        ActMap map,
+        IReadOnlyList<MapPoint> points,
+        Dictionary<MapCoord, NMapPoint> pointDict,
+        InjectedBatch batch)
+    {
+        try
+        {
+            if (points.Count == 0) return;
+
+            var boss = map.BossMapPoint;
+            var second = map.SecondBossMapPoint;
+            if (boss == null || second == null)
+            {
+                MainFile.Logger.Warn(
+                    "[SynthHearth] 地图缺 Boss 或第二 Boss 点 ⇒ 不串链（点表仍可被 GetPoint 解析，只是走不到）");
+                return;
+            }
+
+            foreach (var pt in points)
+            {
+                if (pointDict.ContainsKey(pt.coord)) continue;
+
+                MainFile.Logger.Warn(
+                    $"[SynthHearth] 合成点 ({pt.coord.col},{pt.coord.row}) 没有视觉节点 ⇒ 整批不串链" +
+                    "（否则 SetMap 的 DrawPaths 会抛 not in the map point dictionary）");
+                return;
+            }
+
+            if (ChainedMaps.TryGetValue(map, out _))
+            {
+                MainFile.DebugLog(
+                    "[SynthHearth] 这张地图实例的链还在（上次撤销未生效），本次只补视觉节点、不重复串链");
+                return;
+            }
+
+            ChainedMaps.Add(map, ChainedMaps);
+
+            MapPoint prev = boss;
+            foreach (var pt in points)
+            {
+                prev.AddChildPoint(pt);
+                pt.parents.Add(prev);
+                batch.Links.Add((prev, pt));
+                prev = pt;
+            }
+
+            prev.AddChildPoint(second);
+            second.parents.Add(prev);
+            batch.Links.Add((prev, second));
+        }
+        catch (Exception ex)
+        {
+            MainFile.Logger.Warn(
+                $"[SynthHearth] 串链失败（合成点仍可由 GetPoint 解析，只是点不动）: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -472,33 +541,13 @@ internal static class SyntheticHearth
             }
 
             // 3) 串链：Boss -> 合成点 -> ... -> 第二个 Boss（逐条登记，供下一次 SetMap 前撤销）
-            //    ⚠️ 同一张 ActMap 实例只串一次：别的 mod 再调 SetMap 时地图数据往往还是同一张，
+            //    ⚠️ 只有**每个合成点都已经在 _mapPointDictionary 里有视觉节点**才允许串 ——
+            //       否则 SetMap 的 DrawPaths 会抛 "not in the map point dictionary"。
+            //       ⚠️ 同一张 ActMap 实例只串一次：别的 mod 再调 SetMap 时地图数据往往还是同一张，
             //       重复 AddChildPoint 会在链上留第二个合成点（幽灵节点 ⇒ 可能走出不存在的房间）。
             //       （正常路径下 CleanupInjected 会先把链撤掉并把它从 ChainedMaps 移除，
             //        所以这里的 "已串过" 只会在"撤链失败"时命中 —— 那时宁可少串也不重复串。）
-            if (!ChainedMaps.TryGetValue(map, out _))
-            {
-                ChainedMaps.Add(map, ChainedMaps);
-                foreach (var pt in points)
-                {
-                    map.BossMapPoint.AddChildPoint(pt);
-                    batch.Links.Add((map.BossMapPoint, pt));
-                }
-
-                for (var i = 0; i + 1 < points.Count; i++)
-                {
-                    points[i].AddChildPoint(points[i + 1]);
-                    batch.Links.Add((points[i], points[i + 1]));
-                }
-
-                points[^1].AddChildPoint(map.SecondBossMapPoint);
-                batch.Links.Add((points[^1], map.SecondBossMapPoint));
-            }
-            else
-            {
-                MainFile.DebugLog(
-                    "[SynthHearth] 这张地图实例的链还在（上次撤销未生效），本次只补视觉节点、不重复串链");
-            }
+            LinkChain(map, points, pointDict, batch);
 
             // 4) 画连线
             try
