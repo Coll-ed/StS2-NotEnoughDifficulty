@@ -148,6 +148,95 @@ internal static class SyntheticHearth
         return GetRoomIndex(map, _pendingRoomCount, coord) >= 0;
     }
 
+    // ============================================================
+    // 合成房间的**真实地图点**（2026-11-22：修"只有合成火堆崩"）
+    // ============================================================
+
+    /// <summary>每张地图各自的合成点表（地图实例为键 ⇒ 换图自动失效）。</summary>
+    private static readonly ConditionalWeakTable<ActMap, Dictionary<MapCoord, MapPoint>> SynthDataPoints = new();
+
+    /// <summary>
+    ///     把合成房间补成**真实的地图点**，并串进链：Boss → 合成0 → 合成1 → … → 第二 BOSS。
+    ///
+    /// ## 为什么必须补（用户实测：普通火堆不崩，只有双 BOSS 之间那个合成火堆崩）
+    /// 合成房间以前只存在于"视觉节点 + 我们自己的坐标公式"里：`ActMap.GetPoint(coord)` 对它返回 **null**。
+    /// 于是任何"按当前坐标取地图点"的代码（原版存读档、已访问坐标校验、其它 mod 的休息点钩子）
+    /// 都会拿到 null ⇒ 进火堆瞬间进程直接死（没有托管堆栈，日志只有一句 Preloading）。
+    /// 补点 + <see cref="SyntheticPointResolvePatch" />（GetPoint 兜底解析）之后，
+    /// "坐标解析不到点"这一整类问题消失，进房/读档/校验都能拿到合法 MapPoint。
+    /// </summary>
+    public static void EnsureDataPoints(ActMap map)
+    {
+        try
+        {
+            var types = RoomTypes;
+            if (types.Count == 0) return;
+
+            if (!SynthDataPoints.TryGetValue(map, out var dict) || dict.Count != types.Count)
+            {
+                dict = new Dictionary<MapCoord, MapPoint>();
+                for (var i = 0; i < types.Count; i++)
+                {
+                    var coord = GetCoord(map, i);
+                    dict[coord] = new MapPoint(coord.col, coord.row)
+                    {
+                        PointType = types[i],
+                        CanBeModified = false
+                    };
+                }
+
+                SynthDataPoints.Remove(map);
+                SynthDataPoints.Add(map, dict);
+                MainFile.Logger.Info(
+                    $"[SynthHearth] 已给 {dict.Count} 个合成房间补上真实地图点（GetPoint 现在能解析它们）");
+            }
+
+            // 串链（幂等）：SetMap 前缀的 CleanupInjected 会把链拆掉，所以每次都要补回来
+            MapPoint? prev = map.BossMapPoint;
+            for (var i = 0; i < types.Count && prev != null; i++)
+            {
+                var coord = GetCoord(map, i);
+                if (!dict.TryGetValue(coord, out var point)) continue;
+                prev.AddChildPoint(point);
+                point.parents.Add(prev);
+                prev = point;
+            }
+
+            if (prev != null && map.SecondBossMapPoint is { } second)
+            {
+                prev.AddChildPoint(second);
+                second.parents.Add(prev);
+            }
+        }
+        catch (Exception ex)
+        {
+            MainFile.Logger.Warn($"[SynthHearth] 补合成房间地图点失败: {ex.Message}");
+        }
+    }
+
+    /// <summary><c>ActMap.GetPoint</c> 的兜底：解析不到就查我们的合成点表。</summary>
+    public static bool TryGetDataPoint(ActMap? map, MapCoord coord, out MapPoint point)
+    {
+        point = null!;
+        if (map == null) return false;
+
+        try
+        {
+            EnsureDataPoints(map);
+            if (SynthDataPoints.TryGetValue(map, out var dict) && dict.TryGetValue(coord, out var p))
+            {
+                point = p;
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            MainFile.Logger.Warn($"[SynthHearth] TryGetDataPoint 失败: {ex.Message}");
+        }
+
+        return false;
+    }
+
     /// <summary>
     ///     <c>NMapScreen.SetMap</c> **前缀**里调：把上一轮注入的合成内容整批撤掉 ——
     ///     视觉节点 / <c>_mapPointDictionary</c> / <c>_paths</c> / **<c>ActMap</c> 数据链**。
@@ -317,8 +406,10 @@ internal static class SyntheticHearth
                 return false;
             }
 
-            var bossNode = Traverse.Create(screen).Field("_bossPointNode").GetValue<NBossMapPoint>();
-            var secondNode = Traverse.Create(screen).Field("_secondBossPointNode").GetValue<NBossMapPoint>();
+            // ★ 先把合成房间补成真实地图点（EnsureDataPoints 注释：坐标解析不到点 = "进火堆必崩"的根因）
+            EnsureDataPoints(map);
+
+            var bossNode = Traverse.Create(screen).Field("_bossPointNode").GetValue<NBossMapPoint>();            var secondNode = Traverse.Create(screen).Field("_secondBossPointNode").GetValue<NBossMapPoint>();
             var container = Traverse.Create(screen).Field("_points").GetValue<Control>();
             var pointDict = Traverse.Create(screen)
                 .Field("_mapPointDictionary").GetValue<Dictionary<MapCoord, NMapPoint>>();
@@ -860,3 +951,27 @@ internal static class SyntheticHearth
 // SyntheticRoomExitPatches —— 一个类里某个目标失效只废掉那个类，不再连带全部地图注入）。
 // （1:1 对齐工坊模组 Boss Gauntlet 的 10 个 patch 面）。
 // ============================================================
+
+// ============================================================
+// GetPoint 兜底解析：让合成房间的坐标**查得到点**
+//
+// 2026-11-22 用户实测：普通火堆正常，只有双 BOSS 之间那个合成火堆必崩，
+// 而崩溃点根本不在角色动画（我们的取证行 _Ready 结束 已经打出来了），是在房间起来之后。
+// 根因就是合成坐标在地图数据里**不存在**：ActMap.GetPoint(coord) 返回 null，
+// 任何"按当前坐标取点"的原版/其它 mod 代码都会拿到 null。
+// 这里补一个 postfix 兜底 —— 原版优先，只有原版解析不到时才返回我们的点。
+// ============================================================
+[HarmonyPatch(typeof(ActMap), "GetPoint", typeof(int), typeof(int))]
+internal static class SyntheticPointResolvePatch
+{
+    [HarmonyPostfix]
+    [HarmonyPriority(Priority.Low)]
+    private static void Postfix(ActMap __instance, int col, int row, ref MapPoint __result)
+    {
+        if (__result != null) return;
+        if (!PatchScope.IsEnabled) return;
+
+        if (SyntheticHearth.TryGetDataPoint(__instance, new MapCoord(col, row), out var point))
+            __result = point;
+    }
+}
