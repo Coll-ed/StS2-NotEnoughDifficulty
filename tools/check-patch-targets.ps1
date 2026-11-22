@@ -115,7 +115,11 @@ $report = foreach ($r in $rows) {
     $overloads = 0
     $ambiguous = $false
     if ($typeOk -and $r.Member) {
-        $sameName = @($apiTypes[$resolvedType] | Where-Object { ($_ -split '\(')[0].Trim() -eq $r.Member })
+        # 属性也能当 patch 目标（MethodType.Getter/Setter）：元数据里叫 get_X / set_X，两种写法都算命中
+        $sameName = @($apiTypes[$resolvedType] | Where-Object {
+                $n = ($_ -split '\(')[0].Trim()
+                $n -eq $r.Member -or $n -eq "get_$($r.Member)" -or $n -eq "set_$($r.Member)"
+            })
         $overloads = $sameName.Count
         $memberOk = $sameName | Select-Object -First 1
         # 只写方法名（没列参数类型）而目标有多个重载 ⇒ Harmony 报 Ambiguous match，整类被跳过
