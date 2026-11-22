@@ -660,6 +660,13 @@ internal static class SyntheticHearth
             var boss = map.BossMapPoint.coord;
             if (c.col == boss.col && c.row == boss.row) return true;      // 站在第一个 BOSS 上（常规路线）
 
+            // ★ 2026-11-22 修「打完第二个 BOSS 还能再点它一遍」：
+            //   原版进入房间前会先 AddVisitedMapCoord（IL：append → CreateRoom）⇒ "已访问"= 已经打过。
+            //   之前只看"当前站在第一个 BOSS 或合成节点上"，于是玩家从第二个 BOSS 的奖励界面回到地图后，
+            //   当前坐标仍停在合成节点/第二个 BOSS 上 ⇒ 又被提成 Travelable ⇒ 可以再打一遍。
+            var second = map.SecondBossMapPoint.coord;
+            if (state.VisitedMapCoords.Contains(second)) return false;
+
             // 站在合成节点（火堆/商店）上 —— 此时原版算不出第二个 BOSS 可通行，正是要兜底的场景
             var count = Math.Max(_pendingRoomCount, RoomTypes.Count);
             return count > 0 && GetRoomIndex(map, count, c) >= 0;
@@ -768,9 +775,15 @@ internal static class SyntheticHearth
         if (index < 0) return false;
 
         MainFile.DebugLog($"[Gauntlet] 读档落在合成房间 index={index}，按原版流程恢复");
+        MainFile.Logger.Info(
+            $"[Gauntlet] 读档取证: 当前坐标=({coord.col},{coord.row}) | 合成房间 index={index} | " +
+            $"已访问 {state.VisitedMapCoords.Count} 个点（最后一个={FmtCoord(state.VisitedMapCoords.Count > 0 ? state.VisitedMapCoords[^1] : (MapCoord?)null)}） | " +
+            $"该坐标是否已访问={state.VisitedMapCoords.Contains(coord)} | 内存步进={_pendingStep}/{_pendingRoomCount}");
         result = rm.EnterMapPointInternal(EntryFloor(map), types[index], null, false);
         return result != null;
     }
+
+    private static string FmtCoord(MapCoord? c) => c is { } v ? $"({v.col},{v.row})" : "无";
 
     /// <summary>多人投票：合成坐标不参与原版投票逻辑，直接清掉。</summary>
     public static void RemapVoteSource(ref MapLocation source)
